@@ -348,6 +348,59 @@
     padding: 10px 0;
   }
 
+  /* Bookmarklet */
+  .bookmarklet-section {
+    background: var(--card-bg);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .bookmarklet-section h2 {
+    font-size: 1rem;
+    color: var(--orange);
+    margin-bottom: 12px;
+    border-bottom: 1px solid #333;
+    padding-bottom: 8px;
+  }
+
+  .bookmarklet-link {
+    display: inline-block;
+    background: var(--orange);
+    color: var(--white);
+    padding: 10px 20px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: grab;
+    margin-bottom: 12px;
+  }
+
+  .bookmarklet-link:hover { opacity: 0.85; }
+
+  .bookmarklet-instructions {
+    font-size: 0.82rem;
+    color: var(--light-gray);
+    line-height: 1.6;
+  }
+
+  .bookmarklet-instructions ol {
+    padding-left: 20px;
+    margin-top: 8px;
+  }
+
+  .bookmarklet-instructions li {
+    margin-bottom: 4px;
+  }
+
+  .bookmarklet-instructions code {
+    background: var(--darker-bg);
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 0.8rem;
+  }
+
   .toast {
     position: fixed;
     bottom: 20px;
@@ -439,6 +492,30 @@
     <div class="html-preview" id="htmlPreview"></div>
   </div>
 
+  <!-- Bookmarklet -->
+  <div class="bookmarklet-section">
+    <h2>Presto Helper Bookmarklet</h2>
+    <p style="font-size:0.85rem; color:var(--light-gray); margin-bottom:12px;">
+      Drag this link to your bookmarks bar. Click it on any Presto story editor page to auto-fill the Slug and Classification fields.
+    </p>
+    <a class="bookmarklet-link" id="bookmarkletLink" href="#">Presto Auto-Fill</a>
+    <div class="bookmarklet-instructions">
+      <strong>How to install:</strong>
+      <ol>
+        <li>Make sure your bookmarks bar is visible (<code>Ctrl+Shift+B</code> / <code>Cmd+Shift+B</code>)</li>
+        <li>Drag the <strong>"Presto Auto-Fill"</strong> button above into your bookmarks bar</li>
+        <li>Navigate to a Presto story editor page</li>
+        <li>Click the bookmarklet &mdash; it will:
+          <ul style="list-style:disc; padding-left:18px; margin-top:4px;">
+            <li>Read the page headline and convert it to a lowercase-hyphenated slug</li>
+            <li>Fill the <strong>Slug</strong> input field with that slug</li>
+            <li>Set the <strong>Classification</strong> dropdown to <code>sports/nba</code></li>
+          </ul>
+        </li>
+      </ol>
+    </div>
+  </div>
+
 </div>
 
 <div class="toast" id="toast"></div>
@@ -454,8 +531,7 @@
     selectedTitle: ''
   };
 
-  const ARCHIVE_BASE = 'https://raw.githubusercontent.com/jsierrahoopshype/hoopshype-rumors/main/hoopshype_rumors_part';
-  const ARCHIVE_PARTS = 7;
+  const RUMORS_API_BASE = 'https://hoopshype-rumors-api.thejorgesierra.workers.dev/api/rumors';
   const BLUESKY_API = 'https://cdechoch-nba-buzz.hf.space/api/mentions/';
 
   // ─── Init from URL params ───
@@ -560,20 +636,56 @@
 
   // ─── Fetch rumors archive ───
   async function fetchRumorsArchive(playerName, headline) {
-    const urls = [];
-    for (let i = 1; i <= ARCHIVE_PARTS; i++) {
-      urls.push(ARCHIVE_BASE + i + '.json');
+    // Start with latest rumors for fast results
+    let allEntries = [];
+    try {
+      const latestResp = await fetch(RUMORS_API_BASE + '/latest');
+      if (latestResp.ok) {
+        const latest = await latestResp.json();
+        allEntries = Array.isArray(latest) ? latest : [];
+      }
+    } catch (e) {
+      console.warn('Latest rumors fetch failed:', e);
     }
 
-    const responses = await Promise.all(urls.map(url =>
-      fetch(url).then(r => {
-        if (!r.ok) throw new Error('Failed to fetch ' + url);
-        return r.json();
-      })
-    ));
+    // Load index to discover how many parts exist, then fetch all parts
+    try {
+      const indexResp = await fetch(RUMORS_API_BASE + '/index');
+      let partCount = 7;
+      if (indexResp.ok) {
+        const idx = await indexResp.json();
+        if (idx.files) partCount = idx.files.length;
+      }
 
-    // Combine all entries
-    let allEntries = responses.flat();
+      const partUrls = [];
+      for (let i = 1; i <= partCount; i++) {
+        partUrls.push(RUMORS_API_BASE + '/part/' + i);
+      }
+
+      const partResponses = await Promise.allSettled(
+        partUrls.map(url => fetch(url).then(r => {
+          if (!r.ok) throw new Error('Failed: ' + url);
+          return r.json();
+        }))
+      );
+
+      partResponses.forEach(r => {
+        if (r.status === 'fulfilled' && Array.isArray(r.value)) {
+          allEntries = allEntries.concat(r.value);
+        }
+      });
+    } catch (e) {
+      console.warn('Parts fetch failed:', e);
+    }
+
+    // Deduplicate by a composite key (date + first 60 chars of text)
+    const seen = new Set();
+    allEntries = allEntries.filter(entry => {
+      const key = (entry.date || '') + '|' + ((entry.text || entry.headline || '').slice(0, 60));
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 
     // Search for player name (case-insensitive)
     const nameLC = playerName.toLowerCase();
@@ -844,6 +956,34 @@
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), 2000);
   }
+
+  // ─── Bookmarklet ───
+  (function setupBookmarklet() {
+    const code = `(function(){
+      try{
+        var h=document.querySelector('h1,h2,[class*="headline"],[data-testid="headline"]');
+        if(!h){h=document.querySelector('[name="title"],[id*="title"]');}
+        var txt=h?h.innerText||h.value||'':'';
+        var slug=txt.toLowerCase().replace(/[^a-z0-9\\s-]/g,'').replace(/\\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'');
+        var slugField=document.querySelector('[name="slug"],[id*="slug"],[aria-label*="Slug"],[aria-label*="slug"],[placeholder*="slug"],[placeholder*="Slug"]');
+        if(slugField){
+          var nSet=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
+          nSet.call(slugField,slug);
+          slugField.dispatchEvent(new Event('input',{bubbles:true}));
+          slugField.dispatchEvent(new Event('change',{bubbles:true}));
+        }
+        var cls=document.querySelector('[name="classification"],[id*="classification"],[aria-label*="Classification"],[aria-label*="classification"]');
+        if(cls){
+          var nSet2=Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype,'value').set||Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
+          nSet2.call(cls,'sports/nba');
+          cls.dispatchEvent(new Event('input',{bubbles:true}));
+          cls.dispatchEvent(new Event('change',{bubbles:true}));
+        }
+        alert('Done!\\nSlug: '+slug+'\\nClassification: sports/nba');
+      }catch(e){alert('Bookmarklet error: '+e.message);}
+    })()`;
+    document.getElementById('bookmarkletLink').href = 'javascript:' + encodeURIComponent(code);
+  })();
 </script>
 
 </body>

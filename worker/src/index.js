@@ -186,8 +186,21 @@ function extractPlayerName(headline) {
   return words.join(' ');
 }
 
+function decodeHtmlEntities(str) {
+  return str
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCharCode(parseInt(dec, 10)))
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&nbsp;/g, ' ');
+}
+
 function stripTags(html) {
-  return html.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&quot;/g, '"');
+  return decodeHtmlEntities(html.replace(/<[^>]*>/g, ''));
 }
 
 /**
@@ -199,9 +212,12 @@ async function sendSlackNotification(env, rumor) {
     throw new Error('SLACK_WEBHOOK_URL not configured');
   }
 
+  const playerName = decodeHtmlEntities(rumor.playerName);
+  const headline = decodeHtmlEntities(rumor.headline);
+
   const enricherUrl = ENRICHER_BASE + '?' + new URLSearchParams({
-    player: rumor.playerName,
-    headline: rumor.headline.slice(0, 200),
+    player: playerName,
+    headline: headline.slice(0, 200),
     assetId: rumor.assetId,
   }).toString();
 
@@ -214,8 +230,8 @@ async function sendSlackNotification(env, rumor) {
     text: [
       ':basketball: *New HoopsHype Rumor detected*',
       '',
-      '*Player:* ' + rumor.playerName,
-      '*Headline:* ' + rumor.headline,
+      '*Player:* ' + playerName,
+      '*Headline:* ' + headline,
       '',
       ':arrow_right: <' + enricherUrl + '|Open Enricher>',
       ':arrow_right: <' + prestoCopyUrl + '|Presto Copy URL>',
