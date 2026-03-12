@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HoopsHype Rumors Enricher</title>
+<style>
+  :root {
+    --orange: #F7941D;
+    --dark-bg: #1A1A2E;
+    --darker-bg: #12121f;
+    --card-bg: #222240;
+    --white: #ffffff;
+    --light-gray: #cccccc;
+    --mid-gray: #888;
+    --success: #4caf50;
+    --error: #e74c3c;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    background: var(--dark-bg);
+    color: var(--white);
+    min-height: 100vh;
+    line-height: 1.5;
+  }
+
+  header {
+    background: var(--darker-bg);
+    border-bottom: 3px solid var(--orange);
+    padding: 16px 20px;
+    text-align: center;
+  }
+
+  header h1 {
+    font-size: 1.4rem;
+    color: var(--orange);
+    font-weight: 700;
+  }
+
+  header p {
+    font-size: 0.85rem;
+    color: var(--mid-gray);
+    margin-top: 4px;
+  }
+
+  .container {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 20px;
+  }
+
+  /* Input Section */
+  .input-section {
+    background: var(--card-bg);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .input-section label {
+    display: block;
+    font-size: 0.85rem;
+    color: var(--light-gray);
+    margin-bottom: 6px;
+  }
+
+  .input-row {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .input-row input {
+    flex: 1;
+    padding: 10px 14px;
+    border: 1px solid #444;
+    border-radius: 6px;
+    background: var(--darker-bg);
+    color: var(--white);
+    font-size: 0.95rem;
+  }
+
+  .input-row input:focus {
+    outline: none;
+    border-color: var(--orange);
+  }
+
+  .btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: opacity 0.15s;
+  }
+
+  .btn:hover { opacity: 0.85; }
+  .btn:active { opacity: 0.7; }
+
+  .btn-primary {
+    background: var(--orange);
+    color: var(--white);
+  }
+
+  .btn-secondary {
+    background: #444;
+    color: var(--white);
+  }
+
+  .btn-small {
+    padding: 6px 14px;
+    font-size: 0.8rem;
+  }
+
+  .btn-copy {
+    background: var(--success);
+    color: var(--white);
+  }
+
+  /* Title Suggestions */
+  .title-section {
+    background: var(--card-bg);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    display: none;
+  }
+
+  .title-section h2 {
+    font-size: 1rem;
+    color: var(--orange);
+    margin-bottom: 12px;
+  }
+
+  .title-option {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    background: var(--darker-bg);
+    border: 2px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+    font-size: 0.9rem;
+    word-break: break-word;
+  }
+
+  .title-option:hover { border-color: #555; }
+  .title-option.selected { border-color: var(--orange); }
+
+  .title-option input[type="radio"] {
+    accent-color: var(--orange);
+    flex-shrink: 0;
+  }
+
+  .title-actions {
+    margin-top: 12px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .title-actions .copied-msg {
+    color: var(--success);
+    font-size: 0.8rem;
+  }
+
+  /* Status */
+  .status-bar {
+    text-align: center;
+    padding: 16px;
+    display: none;
+  }
+
+  .spinner {
+    display: inline-block;
+    width: 28px;
+    height: 28px;
+    border: 3px solid #444;
+    border-top-color: var(--orange);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    vertical-align: middle;
+    margin-right: 10px;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .error-msg {
+    background: #3a1a1a;
+    border: 1px solid var(--error);
+    color: #ff9999;
+    padding: 12px 16px;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    font-size: 0.85rem;
+  }
+
+  /* Results */
+  .results-section {
+    display: none;
+  }
+
+  .result-block {
+    background: var(--card-bg);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  .result-block h2 {
+    font-size: 1rem;
+    color: var(--orange);
+    margin-bottom: 14px;
+    border-bottom: 1px solid #333;
+    padding-bottom: 8px;
+  }
+
+  .rumor-entry {
+    padding: 10px 0;
+    border-bottom: 1px solid #2a2a4a;
+    font-size: 0.88rem;
+  }
+
+  .rumor-entry:last-child { border-bottom: none; }
+
+  .rumor-date {
+    color: var(--orange);
+    font-weight: 600;
+    font-size: 0.8rem;
+  }
+
+  .rumor-text {
+    margin: 4px 0;
+    color: var(--light-gray);
+    line-height: 1.5;
+  }
+
+  .rumor-source a {
+    color: var(--orange);
+    text-decoration: none;
+    font-size: 0.8rem;
+  }
+
+  .rumor-source a:hover { text-decoration: underline; }
+
+  .bsky-entry {
+    padding: 10px 0;
+    border-bottom: 1px solid #2a2a4a;
+    font-size: 0.88rem;
+  }
+
+  .bsky-entry:last-child { border-bottom: none; }
+
+  .bsky-author {
+    color: var(--orange);
+    font-weight: 600;
+    font-size: 0.85rem;
+  }
+
+  .bsky-handle {
+    color: var(--mid-gray);
+    font-size: 0.8rem;
+  }
+
+  .bsky-text {
+    margin: 4px 0;
+    color: var(--light-gray);
+    line-height: 1.5;
+  }
+
+  .bsky-meta {
+    font-size: 0.78rem;
+    color: var(--mid-gray);
+  }
+
+  .bsky-meta a {
+    color: var(--orange);
+    text-decoration: none;
+  }
+
+  .bsky-meta a:hover { text-decoration: underline; }
+
+  /* Action bar */
+  .action-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 20px;
+  }
+
+  /* Preview */
+  .preview-section {
+    background: var(--card-bg);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+    display: none;
+  }
+
+  .preview-section h2 {
+    font-size: 1rem;
+    color: var(--orange);
+    margin-bottom: 12px;
+  }
+
+  .html-preview {
+    background: #fff;
+    color: #333;
+    padding: 20px;
+    border-radius: 6px;
+    font-family: Georgia, 'Times New Roman', serif;
+    font-size: 0.95rem;
+    line-height: 1.7;
+    max-height: 500px;
+    overflow-y: auto;
+  }
+
+  .html-preview h3 {
+    color: #1a1a2e;
+    font-size: 1.1rem;
+    margin: 16px 0 10px;
+    border-bottom: 2px solid #F7941D;
+    padding-bottom: 4px;
+  }
+
+  .html-preview ul {
+    list-style: none;
+    padding: 0;
+  }
+
+  .html-preview li {
+    padding: 8px 0;
+    border-bottom: 1px solid #eee;
+  }
+
+  .html-preview li:last-child { border-bottom: none; }
+
+  .no-results {
+    color: var(--mid-gray);
+    font-style: italic;
+    padding: 10px 0;
+  }
+
+  .toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--success);
+    color: #fff;
+    padding: 10px 24px;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 0.3s;
+    pointer-events: none;
+  }
+
+  .toast.show {
+    opacity: 1;
+  }
+
+  @media (max-width: 600px) {
+    .input-row { flex-direction: column; }
+    .action-bar { flex-direction: column; }
+    .btn { width: 100%; text-align: center; }
+    header h1 { font-size: 1.2rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>HoopsHype Rumors Enricher</h1>
+  <p>Prepare enriched rumor content for Presto</p>
+</header>
+
+<div class="container">
+
+  <!-- Input -->
+  <div class="input-section">
+    <label for="inputField">Enter Presto URL, Asset ID, or Player Name</label>
+    <div class="input-row">
+      <input type="text" id="inputField" placeholder="e.g. Jaylen Brown, 89115076007, or Presto URL">
+      <button class="btn btn-primary" id="enrichBtn" onclick="startEnrich()">Enrich</button>
+    </div>
+    <div id="parsedInfo" style="font-size:0.82rem; color:var(--mid-gray);"></div>
+  </div>
+
+  <!-- Errors -->
+  <div id="errors"></div>
+
+  <!-- Status -->
+  <div class="status-bar" id="statusBar">
+    <span class="spinner"></span>
+    <span id="statusText">Fetching data...</span>
+  </div>
+
+  <!-- Title Suggestions -->
+  <div class="title-section" id="titleSection">
+    <h2>Title Suggestions</h2>
+    <div id="titleOptions"></div>
+    <div class="title-actions">
+      <button class="btn btn-copy btn-small" onclick="copyTitle()">Copy Title</button>
+      <span class="copied-msg" id="titleCopied"></span>
+    </div>
+  </div>
+
+  <!-- Action Bar -->
+  <div class="action-bar" id="actionBar" style="display:none;">
+    <button class="btn btn-copy" onclick="copyFullHTML()">Copy Full HTML Block</button>
+    <button class="btn btn-secondary" onclick="refreshBluesky()">Refresh Bluesky</button>
+  </div>
+
+  <!-- Results -->
+  <div class="results-section" id="resultsSection">
+    <div class="result-block">
+      <h2 id="rumorsHeading">Recent HoopsHype Rumors</h2>
+      <div id="rumorsResults"></div>
+    </div>
+    <div class="result-block">
+      <h2>What NBA reporters are saying on Bluesky</h2>
+      <div id="blueskyResults"></div>
+    </div>
+  </div>
+
+  <!-- HTML Preview -->
+  <div class="preview-section" id="previewSection">
+    <h2>HTML Preview (what gets pasted into Presto)</h2>
+    <div class="html-preview" id="htmlPreview"></div>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  // ─── State ───
+  let state = {
+    playerName: '',
+    headline: '',
+    assetId: '',
+    rumors: [],
+    blueskyMentions: [],
+    selectedTitle: ''
+  };
+
+  const ARCHIVE_BASE = 'https://raw.githubusercontent.com/jsierrahoopshype/hoopshype-rumors/main/hoopshype_rumors_part';
+  const ARCHIVE_PARTS = 7;
+  const BLUESKY_API = 'https://cdechoch-nba-buzz.hf.space/api/mentions/';
+
+  // ─── Init from URL params ───
+  (function init() {
+    const params = new URLSearchParams(window.location.search);
+    const player = params.get('player');
+    const headline = params.get('headline');
+    const assetId = params.get('assetId');
+
+    if (player) {
+      document.getElementById('inputField').value = player;
+      state.playerName = player;
+      state.headline = headline || '';
+      state.assetId = assetId || '';
+      startEnrich();
+    }
+  })();
+
+  // ─── Parse input ───
+  function parseInput(raw) {
+    raw = raw.trim();
+
+    // Presto URL: extract post ID (asset ID may differ but we capture the post param)
+    const prestoMatch = raw.match(/post\.php\?post=(\d+)/);
+    if (prestoMatch) {
+      return { type: 'assetId', value: prestoMatch[1] };
+    }
+
+    // Pure number = asset ID
+    if (/^\d{5,}$/.test(raw)) {
+      return { type: 'assetId', value: raw };
+    }
+
+    // Otherwise treat as player name
+    return { type: 'player', value: raw };
+  }
+
+  // ─── Start enrichment ───
+  async function startEnrich() {
+    const raw = document.getElementById('inputField').value;
+    if (!raw.trim()) return;
+
+    const parsed = parseInput(raw);
+    const info = document.getElementById('parsedInfo');
+
+    if (parsed.type === 'assetId') {
+      state.assetId = parsed.value;
+      // If we came from URL params, player name is already set
+      if (!state.playerName) {
+        info.textContent = 'Asset ID detected: ' + parsed.value + '. Enter a player name to search rumors.';
+        // Prompt for player name
+        const name = prompt('Enter the player name for this article:');
+        if (!name) return;
+        state.playerName = name.trim();
+      }
+      info.textContent = 'Asset ID: ' + state.assetId + ' | Player: ' + state.playerName;
+    } else {
+      state.playerName = parsed.value;
+      info.textContent = 'Player: ' + state.playerName;
+    }
+
+    // If headline came from URL params, use it; otherwise use player name
+    if (!state.headline) {
+      state.headline = state.playerName;
+    }
+
+    await fetchAll();
+  }
+
+  // ─── Fetch all data ───
+  async function fetchAll() {
+    showStatus(true, 'Fetching rumors archive and Bluesky mentions...');
+    clearErrors();
+    document.getElementById('resultsSection').style.display = 'none';
+    document.getElementById('actionBar').style.display = 'none';
+    document.getElementById('previewSection').style.display = 'none';
+    document.getElementById('titleSection').style.display = 'none';
+
+    const [rumorsResult, blueskyResult] = await Promise.allSettled([
+      fetchRumorsArchive(state.playerName, state.headline),
+      fetchBlueskyMentions(state.playerName)
+    ]);
+
+    showStatus(false);
+
+    if (rumorsResult.status === 'fulfilled') {
+      state.rumors = rumorsResult.value;
+    } else {
+      state.rumors = [];
+      showError('Rumors archive: ' + rumorsResult.reason);
+    }
+
+    if (blueskyResult.status === 'fulfilled') {
+      state.blueskyMentions = blueskyResult.value;
+    } else {
+      state.blueskyMentions = [];
+      showError('Bluesky mentions: ' + blueskyResult.reason);
+    }
+
+    renderResults();
+  }
+
+  // ─── Fetch rumors archive ───
+  async function fetchRumorsArchive(playerName, headline) {
+    const urls = [];
+    for (let i = 1; i <= ARCHIVE_PARTS; i++) {
+      urls.push(ARCHIVE_BASE + i + '.json');
+    }
+
+    const responses = await Promise.all(urls.map(url =>
+      fetch(url).then(r => {
+        if (!r.ok) throw new Error('Failed to fetch ' + url);
+        return r.json();
+      })
+    ));
+
+    // Combine all entries
+    let allEntries = responses.flat();
+
+    // Search for player name (case-insensitive)
+    const nameLC = playerName.toLowerCase();
+    const headlineLC = (headline || '').toLowerCase();
+
+    let matched = allEntries.filter(entry => {
+      const text = ((entry.text || entry.headline || '') + '').toLowerCase();
+      return text.includes(nameLC);
+    });
+
+    // Exclude entries that closely match the current headline
+    if (headlineLC.length > 10) {
+      matched = matched.filter(entry => {
+        const text = ((entry.text || entry.headline || '') + '').toLowerCase();
+        return similarity(text, headlineLC) < 0.8;
+      });
+    }
+
+    // Sort by date descending
+    matched.sort((a, b) => {
+      const da = new Date(a.date || 0);
+      const db = new Date(b.date || 0);
+      return db - da;
+    });
+
+    return matched.slice(0, 10);
+  }
+
+  // Simple similarity check (Jaccard on words)
+  function similarity(a, b) {
+    const wordsA = new Set(a.split(/\s+/));
+    const wordsB = new Set(b.split(/\s+/));
+    const intersection = [...wordsA].filter(w => wordsB.has(w)).length;
+    const union = new Set([...wordsA, ...wordsB]).size;
+    return union === 0 ? 0 : intersection / union;
+  }
+
+  // ─── Fetch Bluesky mentions ───
+  async function fetchBlueskyMentions(playerName) {
+    const url = BLUESKY_API + encodeURIComponent(playerName) + '?limit=10';
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('NBA Buzz API returned ' + resp.status);
+    const data = await resp.json();
+
+    // Filter to last 7 days
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const recent = (Array.isArray(data) ? data : []).filter(entry => {
+      const created = new Date(entry.created_at || 0).getTime();
+      return created >= sevenDaysAgo;
+    });
+
+    return recent.slice(0, 10);
+  }
+
+  // ─── Render results ───
+  function renderResults() {
+    // Title suggestions
+    renderTitles();
+
+    // Rumors
+    const rumorsDiv = document.getElementById('rumorsResults');
+    document.getElementById('rumorsHeading').textContent = 'More on ' + state.playerName + ' — Recent HoopsHype Rumors';
+
+    if (state.rumors.length === 0) {
+      rumorsDiv.innerHTML = '<div class="no-results">No matching rumors found in the archive.</div>';
+    } else {
+      rumorsDiv.innerHTML = state.rumors.map(r => {
+        const date = r.date || 'Unknown date';
+        const text = escapeHtml(r.text || r.headline || '');
+        const source = r.source || '';
+        const sourceLink = r.source_url || r.url || '#';
+        return `<div class="rumor-entry">
+          <div class="rumor-date">${escapeHtml(date)}</div>
+          <div class="rumor-text">${text}</div>
+          ${source ? `<div class="rumor-source"><a href="${escapeHtml(sourceLink)}" target="_blank" rel="noopener">${escapeHtml(source)}</a></div>` : ''}
+        </div>`;
+      }).join('');
+    }
+
+    // Bluesky
+    const bskyDiv = document.getElementById('blueskyResults');
+    if (state.blueskyMentions.length === 0) {
+      bskyDiv.innerHTML = '<div class="no-results">No recent Bluesky mentions found (last 7 days).</div>';
+    } else {
+      bskyDiv.innerHTML = state.blueskyMentions.map(m => {
+        const author = escapeHtml(m.author_name || m.author_handle || 'Unknown');
+        const handle = escapeHtml(m.author_handle || '');
+        const text = escapeHtml(m.text || '');
+        const time = m.created_at ? new Date(m.created_at).toLocaleString() : '';
+        const url = m.web_url || '#';
+        return `<div class="bsky-entry">
+          <div><span class="bsky-author">${author}</span> <span class="bsky-handle">@${handle}</span></div>
+          <div class="bsky-text">${text}</div>
+          <div class="bsky-meta">${time} · <a href="${escapeHtml(url)}" target="_blank" rel="noopener">View post</a></div>
+        </div>`;
+      }).join('');
+    }
+
+    document.getElementById('resultsSection').style.display = 'block';
+    document.getElementById('actionBar').style.display = 'flex';
+
+    // Build and show HTML preview
+    renderPreview();
+  }
+
+  // ─── Title suggestions ───
+  function renderTitles() {
+    const name = state.playerName;
+    const monthYear = new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' });
+    const titles = [
+      name + ' Rumors: Latest News & Updates',
+      name + ' Rumors Roundup – ' + monthYear,
+      name + ': What\'s Being Said Right Now',
+      state.headline && state.headline !== name ? state.headline : null
+    ].filter(Boolean);
+
+    const container = document.getElementById('titleOptions');
+    container.innerHTML = titles.map((t, i) => {
+      const label = i === titles.length - 1 && t === state.headline ? 'Keep original' : '';
+      return `<label class="title-option" onclick="selectTitle(${i})">
+        <input type="radio" name="title" value="${i}" ${i === 0 ? 'checked' : ''}>
+        <span>${label ? '<strong>' + label + ':</strong> ' : ''}${escapeHtml(t)}</span>
+      </label>`;
+    }).join('');
+
+    state.selectedTitle = titles[0];
+    document.getElementById('titleSection').style.display = 'block';
+
+    // Store titles for selection
+    state._titles = titles;
+  }
+
+  function selectTitle(index) {
+    state.selectedTitle = state._titles[index];
+    document.querySelectorAll('.title-option').forEach((el, i) => {
+      el.classList.toggle('selected', i === index);
+      el.querySelector('input').checked = i === index;
+    });
+  }
+
+  // ─── Build output HTML ───
+  function buildOutputHTML() {
+    let html = '';
+
+    // Section 1: Rumors
+    html += '<h3>More on ' + escapeHtml(state.playerName) + ' — Recent HoopsHype Rumors</h3>\n';
+    if (state.rumors.length > 0) {
+      html += '<ul>\n';
+      state.rumors.forEach(r => {
+        const date = escapeHtml(r.date || '');
+        const text = escapeHtml(r.text || r.headline || '');
+        const source = r.source || '';
+        const sourceLink = r.source_url || r.url || '';
+        let li = '<li><strong>' + date + '</strong> — ' + text;
+        if (source && sourceLink) {
+          li += ' (<a href="' + escapeHtml(sourceLink) + '">' + escapeHtml(source) + '</a>)';
+        }
+        li += '</li>\n';
+        html += li;
+      });
+      html += '</ul>\n';
+    } else {
+      html += '<p><em>No matching rumors found.</em></p>\n';
+    }
+
+    // Section 2: Bluesky
+    html += '<h3>What NBA reporters are saying on Bluesky</h3>\n';
+    if (state.blueskyMentions.length > 0) {
+      html += '<ul>\n';
+      state.blueskyMentions.forEach(m => {
+        const author = escapeHtml(m.author_name || m.author_handle || 'Unknown');
+        const handle = escapeHtml(m.author_handle || '');
+        const text = escapeHtml(m.text || '');
+        const time = m.created_at ? new Date(m.created_at).toLocaleString() : '';
+        const url = m.web_url || '';
+        let li = '<li><strong>' + author + '</strong> (@' + handle + '): ' + text;
+        if (time) li += ' — <em>' + time + '</em>';
+        if (url) li += ' <a href="' + escapeHtml(url) + '">View post</a>';
+        li += '</li>\n';
+        html += li;
+      });
+      html += '</ul>\n';
+    } else {
+      html += '<p><em>No recent Bluesky mentions found.</em></p>\n';
+    }
+
+    return html;
+  }
+
+  function renderPreview() {
+    const html = buildOutputHTML();
+    document.getElementById('htmlPreview').innerHTML = html;
+    document.getElementById('previewSection').style.display = 'block';
+  }
+
+  // ─── Copy actions ───
+  async function copyFullHTML() {
+    const html = buildOutputHTML();
+    try {
+      await navigator.clipboard.writeText(html);
+      showToast('Full HTML block copied!');
+    } catch {
+      fallbackCopy(html);
+      showToast('Full HTML block copied!');
+    }
+  }
+
+  async function copyTitle() {
+    if (!state.selectedTitle) return;
+    try {
+      await navigator.clipboard.writeText(state.selectedTitle);
+      showToast('Title copied!');
+    } catch {
+      fallbackCopy(state.selectedTitle);
+      showToast('Title copied!');
+    }
+  }
+
+  function fallbackCopy(text) {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  }
+
+  // ─── Refresh Bluesky ───
+  async function refreshBluesky() {
+    showStatus(true, 'Refreshing Bluesky mentions...');
+    try {
+      state.blueskyMentions = await fetchBlueskyMentions(state.playerName);
+    } catch (e) {
+      showError('Bluesky refresh failed: ' + e.message);
+    }
+    showStatus(false);
+    renderResults();
+    showToast('Bluesky mentions refreshed!');
+  }
+
+  // ─── Helpers ───
+  function escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  function showStatus(show, text) {
+    const bar = document.getElementById('statusBar');
+    bar.style.display = show ? 'block' : 'none';
+    if (text) document.getElementById('statusText').textContent = text;
+  }
+
+  function showError(msg) {
+    const div = document.getElementById('errors');
+    div.innerHTML += '<div class="error-msg">' + escapeHtml(msg) + '</div>';
+  }
+
+  function clearErrors() {
+    document.getElementById('errors').innerHTML = '';
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2000);
+  }
+</script>
+
+</body>
+</html>
