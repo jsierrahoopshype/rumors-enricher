@@ -531,7 +531,8 @@
     selectedTitle: ''
   };
 
-  const RUMORS_API_BASE = 'https://hoopshype-rumors-api.thejorgesierra.workers.dev/api/rumors';
+  const ARCHIVE_BASE = 'https://raw.githubusercontent.com/jsierrahoopshype/hoopshype-rumors/main/hoopshype_rumors_part';
+  const ARCHIVE_PARTS = 7;
   const BLUESKY_API = 'https://cdechoch-nba-buzz.hf.space/api/mentions/';
 
   // ─── Init from URL params ───
@@ -636,55 +637,23 @@
 
   // ─── Fetch rumors archive ───
   async function fetchRumorsArchive(playerName, headline) {
-    // Start with latest rumors for fast results
+    const urls = [];
+    for (let i = 1; i <= ARCHIVE_PARTS; i++) {
+      urls.push(ARCHIVE_BASE + i + '.json');
+    }
+
+    const responses = await Promise.allSettled(
+      urls.map(url => fetch(url).then(r => {
+        if (!r.ok) throw new Error('Failed to fetch ' + url);
+        return r.json();
+      }))
+    );
+
     let allEntries = [];
-    try {
-      const latestResp = await fetch(RUMORS_API_BASE + '/latest');
-      if (latestResp.ok) {
-        const latest = await latestResp.json();
-        allEntries = Array.isArray(latest) ? latest : [];
+    responses.forEach(r => {
+      if (r.status === 'fulfilled' && Array.isArray(r.value)) {
+        allEntries = allEntries.concat(r.value);
       }
-    } catch (e) {
-      console.warn('Latest rumors fetch failed:', e);
-    }
-
-    // Load index to discover how many parts exist, then fetch all parts
-    try {
-      const indexResp = await fetch(RUMORS_API_BASE + '/index');
-      let partCount = 7;
-      if (indexResp.ok) {
-        const idx = await indexResp.json();
-        if (idx.files) partCount = idx.files.length;
-      }
-
-      const partUrls = [];
-      for (let i = 1; i <= partCount; i++) {
-        partUrls.push(RUMORS_API_BASE + '/part/' + i);
-      }
-
-      const partResponses = await Promise.allSettled(
-        partUrls.map(url => fetch(url).then(r => {
-          if (!r.ok) throw new Error('Failed: ' + url);
-          return r.json();
-        }))
-      );
-
-      partResponses.forEach(r => {
-        if (r.status === 'fulfilled' && Array.isArray(r.value)) {
-          allEntries = allEntries.concat(r.value);
-        }
-      });
-    } catch (e) {
-      console.warn('Parts fetch failed:', e);
-    }
-
-    // Deduplicate by a composite key (date + first 60 chars of text)
-    const seen = new Set();
-    allEntries = allEntries.filter(entry => {
-      const key = (entry.date || '') + '|' + ((entry.text || entry.headline || '').slice(0, 60));
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
     });
 
     // Search for player name (case-insensitive)
