@@ -538,8 +538,7 @@
     selectedTitle: ''
   };
 
-  const ARCHIVE_REPO = 'https://jsierrahoopshype.github.io/hoopshype-rumors/';
-  const ARCHIVE_PREFIX = 'hoopshype_rumors_part';
+  const RUMORS_API = 'https://hoopshype-rumors-api.thejorgesierra.workers.dev/api/rumors';
   const ARCHIVE_PARTS = 7;
   const BLUESKY_API = 'https://cdechoch-nba-buzz.hf.space/api/mentions/';
 
@@ -645,9 +644,10 @@
 
   // ─── Fetch rumors archive ───
   async function fetchRumorsArchive(playerName, headline) {
-    const urls = [];
+    // Build URLs: /latest + /part/1 through /part/7
+    const urls = [RUMORS_API + '/latest'];
     for (let i = 1; i <= ARCHIVE_PARTS; i++) {
-      urls.push(ARCHIVE_REPO + ARCHIVE_PREFIX + i + '.json');
+      urls.push(RUMORS_API + '/part/' + i);
     }
 
     const responses = await Promise.allSettled(
@@ -662,6 +662,15 @@
       if (r.status === 'fulfilled' && Array.isArray(r.value)) {
         allEntries = allEntries.concat(r.value);
       }
+    });
+
+    // Deduplicate by date + first 60 chars of text
+    const seen = new Set();
+    allEntries = allEntries.filter(entry => {
+      const key = (entry.date || '') + '|' + ((entry.text || entry.headline || '').slice(0, 60));
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
     });
 
     // Filter by tags array (case-insensitive match on player name)
