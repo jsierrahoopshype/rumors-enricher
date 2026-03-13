@@ -663,13 +663,14 @@
       }
     });
 
-    // Search for player name (case-insensitive)
+    // Filter by tags array (case-insensitive match on player name)
     const nameLC = playerName.toLowerCase();
     const headlineLC = (headline || '').toLowerCase();
 
     let matched = allEntries.filter(entry => {
-      const text = ((entry.text || entry.headline || '') + '').toLowerCase();
-      return text.includes(nameLC);
+      const tags = entry.tags;
+      if (!Array.isArray(tags)) return false;
+      return tags.some(tag => (tag + '').toLowerCase().includes(nameLC));
     });
 
     // Exclude entries that closely match the current headline
@@ -971,19 +972,67 @@
         if(!txt){alert('Could not find Main Headline field.');return;}
         var slug=txt.toLowerCase().replace(/[^a-z0-9\\s-]/g,'').replace(/\\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'');
 
-        /* 2. Find the Slug input field by its label or attributes */
+        /* 2. Find the Slug input field in the right sidebar Planning section */
         var slugField=null;
-        for(var j=0;j<labels.length;j++){
-          if(labels[j].textContent.trim().toLowerCase()==='slug'){
-            var sForId=labels[j].getAttribute('for');
+        console.log('[Presto Auto-Fill] Scanning for Slug field...');
+
+        /* Strategy A: Find any label/div/span with exact text "Slug" and grab the nearest input */
+        var allEls=document.querySelectorAll('label,div,span');
+        for(var j=0;j<allEls.length;j++){
+          var elText=allEls[j].textContent.trim();
+          if(elText==='Slug'||elText==='slug'){
+            console.log('[Presto Auto-Fill] Found "Slug" label:',allEls[j].tagName,allEls[j]);
+            /* Check for attribute */
+            var sForId=allEls[j].getAttribute('for');
             if(sForId){slugField=document.getElementById(sForId);}
-            if(!slugField){slugField=labels[j].parentElement.querySelector('input');}
-            if(!slugField){var sib=labels[j].nextElementSibling;if(sib&&sib.matches('input')){slugField=sib;}else if(sib){slugField=sib.querySelector('input');}}
-            if(slugField)break;
+            /* Check parent container for input */
+            if(!slugField){slugField=allEls[j].parentElement.querySelector('input');}
+            /* Check grandparent (label inside wrapper div) */
+            if(!slugField&&allEls[j].parentElement.parentElement){slugField=allEls[j].parentElement.parentElement.querySelector('input');}
+            /* Check next sibling tree */
+            if(!slugField){var sib=allEls[j].nextElementSibling;if(sib){if(sib.matches('input')){slugField=sib;}else{slugField=sib.querySelector('input');}}}
+            if(slugField){console.log('[Presto Auto-Fill] Slug field found via label strategy:',slugField);break;}
           }
         }
-        if(!slugField){slugField=document.querySelector('[name="slug"],[id*="slug"],[placeholder*="slug"],[placeholder*="Slug"],[aria-label*="Slug"],[aria-label*="slug"]');}
-        if(!slugField){alert('Could not find Slug field.');return;}
+
+        /* Strategy B: Direct attribute selectors */
+        if(!slugField){
+          slugField=document.querySelector('input[name="slug"],input[id="slug"]');
+          if(slugField)console.log('[Presto Auto-Fill] Slug field found via name/id attribute:',slugField);
+        }
+
+        /* Strategy C: Search right sidebar for inputs near a "Slug" text node */
+        if(!slugField){
+          var sidebar=document.querySelector('[class*="sidebar"],[class*="rail"],[class*="right-panel"],[class*="planning"],[role="complementary"]');
+          var searchRoot=sidebar||document;
+          console.log('[Presto Auto-Fill] Searching sidebar/root for inputs:',searchRoot);
+          var allInputs=searchRoot.querySelectorAll('input[type="text"],input:not([type])');
+          console.log('[Presto Auto-Fill] Found '+allInputs.length+' text inputs in search root');
+          for(var si=0;si<allInputs.length;si++){
+            var inp=allInputs[si];
+            var container=inp.closest('[class*="field"],[class*="form-group"],[class*="slug"]')||inp.parentElement;
+            if(container&&/\\bslug\\b/i.test(container.textContent.substring(0,50))){
+              slugField=inp;
+              console.log('[Presto Auto-Fill] Slug field found via sidebar proximity:',slugField);
+              break;
+            }
+          }
+        }
+
+        /* Strategy D: Yellow-bordered input (known Presto styling) */
+        if(!slugField){
+          var allInp=document.querySelectorAll('input');
+          for(var yi=0;yi<allInp.length;yi++){
+            var cs=window.getComputedStyle(allInp[yi]);
+            if(cs.borderColor&&cs.borderColor.indexOf('rgb(247')===0||cs.borderColor.indexOf('yellow')>=0||cs.borderLeftColor.indexOf('rgb(247')===0){
+              slugField=allInp[yi];
+              console.log('[Presto Auto-Fill] Slug field found via yellow border heuristic:',slugField);
+              break;
+            }
+          }
+        }
+
+        if(!slugField){console.error('[Presto Auto-Fill] Could not find Slug field. All inputs:',document.querySelectorAll('input'));alert('Could not find Slug field. Check console for debug info (F12).');return;}
 
         /* 3. Set slug with React-compatible event */
         reactSet(slugField,slug);
