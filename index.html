@@ -514,7 +514,7 @@
         <li>Navigate to a Presto story editor page</li>
         <li>Click the bookmarklet &mdash; it will:
           <ul style="list-style:disc; padding-left:18px; margin-top:4px;">
-            <li>Read the page headline and convert it to a lowercase-hyphenated slug</li>
+            <li>Read the Main Headline field and convert it to a lowercase-hyphenated slug</li>
             <li>Fill the <strong>Slug</strong> input field with that slug</li>
             <li>Set the <strong>Classification</strong> dropdown to <code>sports/nba</code></li>
           </ul>
@@ -942,25 +942,68 @@
   (function setupBookmarklet() {
     const code = `(function(){
       try{
-        var h=document.querySelector('h1,h2,[class*="headline"],[data-testid="headline"]');
-        if(!h){h=document.querySelector('[name="title"],[id*="title"]');}
-        var txt=h?h.innerText||h.value||'':'';
+        /* Helper: set a React-controlled input/select value */
+        function reactSet(el,val){
+          var proto=el.tagName==='SELECT'?window.HTMLSelectElement.prototype:window.HTMLInputElement.prototype;
+          var setter=Object.getOwnPropertyDescriptor(proto,'value');
+          if(!setter)setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value');
+          if(setter&&setter.set){setter.set.call(el,val);}else{el.value=val;}
+          el.dispatchEvent(new Event('input',{bubbles:true}));
+          el.dispatchEvent(new Event('change',{bubbles:true}));
+        }
+
+        /* 1. Find the Main Headline field in Presto (not the page title) */
+        var headlineEl=null;
+        var labels=document.querySelectorAll('label');
+        for(var i=0;i<labels.length;i++){
+          var lt=labels[i].textContent.trim().toLowerCase();
+          if(lt==='main headline'||lt==='headline'){
+            var forId=labels[i].getAttribute('for');
+            if(forId){headlineEl=document.getElementById(forId);}
+            if(!headlineEl){headlineEl=labels[i].parentElement.querySelector('input,textarea');}
+            if(!headlineEl){headlineEl=labels[i].nextElementSibling;while(headlineEl&&!headlineEl.matches('input,textarea')){headlineEl=headlineEl.querySelector('input,textarea');break;}}
+            if(headlineEl)break;
+          }
+        }
+        if(!headlineEl){headlineEl=document.querySelector('[name*="headline"],[id*="headline"],[data-testid*="headline"],[placeholder*="headline"],[placeholder*="Headline"]');}
+        if(!headlineEl){headlineEl=document.querySelector('[name*="mainHeadline"],[id*="mainHeadline"]');}
+        var txt=headlineEl?(headlineEl.value||headlineEl.innerText||''):'';
+        if(!txt){alert('Could not find Main Headline field.');return;}
         var slug=txt.toLowerCase().replace(/[^a-z0-9\\s-]/g,'').replace(/\\s+/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'');
-        var slugField=document.querySelector('[name="slug"],[id*="slug"],[aria-label*="Slug"],[aria-label*="slug"],[placeholder*="slug"],[placeholder*="Slug"]');
-        if(slugField){
-          var nSet=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
-          nSet.call(slugField,slug);
-          slugField.dispatchEvent(new Event('input',{bubbles:true}));
-          slugField.dispatchEvent(new Event('change',{bubbles:true}));
+
+        /* 2. Find the Slug input field by its label or attributes */
+        var slugField=null;
+        for(var j=0;j<labels.length;j++){
+          if(labels[j].textContent.trim().toLowerCase()==='slug'){
+            var sForId=labels[j].getAttribute('for');
+            if(sForId){slugField=document.getElementById(sForId);}
+            if(!slugField){slugField=labels[j].parentElement.querySelector('input');}
+            if(!slugField){var sib=labels[j].nextElementSibling;if(sib&&sib.matches('input')){slugField=sib;}else if(sib){slugField=sib.querySelector('input');}}
+            if(slugField)break;
+          }
         }
-        var cls=document.querySelector('[name="classification"],[id*="classification"],[aria-label*="Classification"],[aria-label*="classification"]');
-        if(cls){
-          var nSet2=Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype,'value').set||Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
-          nSet2.call(cls,'sports/nba');
-          cls.dispatchEvent(new Event('input',{bubbles:true}));
-          cls.dispatchEvent(new Event('change',{bubbles:true}));
+        if(!slugField){slugField=document.querySelector('[name="slug"],[id*="slug"],[placeholder*="slug"],[placeholder*="Slug"],[aria-label*="Slug"],[aria-label*="slug"]');}
+        if(!slugField){alert('Could not find Slug field.');return;}
+
+        /* 3. Set slug with React-compatible event */
+        reactSet(slugField,slug);
+
+        /* 4. Find Classification dropdown and set to sports/nba */
+        var clsField=null;
+        for(var k=0;k<labels.length;k++){
+          if(labels[k].textContent.trim().toLowerCase()==='classification'){
+            var cForId=labels[k].getAttribute('for');
+            if(cForId){clsField=document.getElementById(cForId);}
+            if(!clsField){clsField=labels[k].parentElement.querySelector('select,input');}
+            if(!clsField){var csib=labels[k].nextElementSibling;if(csib&&csib.matches('select,input')){clsField=csib;}else if(csib){clsField=csib.querySelector('select,input');}}
+            if(clsField)break;
+          }
         }
-        alert('Done!\\nSlug: '+slug+'\\nClassification: sports/nba');
+        if(!clsField){clsField=document.querySelector('[name="classification"],[id*="classification"],[aria-label*="Classification"],[aria-label*="classification"]');}
+        if(clsField){reactSet(clsField,'sports/nba');}
+
+        /* 5. Confirmation alert */
+        alert('Presto Auto-Fill Done!\\n\\nSlug: '+slug+'\\nClassification: '+(clsField?'sports/nba':'(field not found)'));
       }catch(e){alert('Bookmarklet error: '+e.message);}
     })()`;
     document.getElementById('bookmarkletLink').href = 'javascript:' + encodeURIComponent(code);
