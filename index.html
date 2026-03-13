@@ -267,6 +267,10 @@
   .bsky-handle {
     color: var(--mid-gray);
     font-size: 0.8rem;
+    text-decoration: none;
+  }
+  .bsky-handle:hover {
+    text-decoration: underline;
   }
 
   .bsky-text {
@@ -477,12 +481,12 @@
   <!-- Results -->
   <div class="results-section" id="resultsSection">
     <div class="result-block">
-      <h2 id="rumorsHeading">Recent HoopsHype Rumors</h2>
-      <div id="rumorsResults"></div>
-    </div>
-    <div class="result-block">
       <h2>What NBA reporters are saying on Bluesky</h2>
       <div id="blueskyResults"></div>
+    </div>
+    <div class="result-block">
+      <h2 id="rumorsHeading">Recent HoopsHype Rumors</h2>
+      <div id="rumorsResults"></div>
     </div>
   </div>
 
@@ -746,7 +750,7 @@
         const time = m.created_at ? new Date(m.created_at).toLocaleString() : '';
         const url = m.web_url || '#';
         return `<div class="bsky-entry">
-          <div><span class="bsky-author">${author}</span> <span class="bsky-handle">@${handle}</span></div>
+          <div><span class="bsky-author">${author}</span> <a class="bsky-handle" href="https://bsky.app/profile/${handle}" target="_blank" rel="noopener">@${handle}</a></div>
           <div class="bsky-text">${text}</div>
           <div class="bsky-meta">${time} · <a href="${escapeHtml(url)}" target="_blank" rel="noopener">View post</a></div>
         </div>`;
@@ -799,7 +803,28 @@
   function buildOutputHTML() {
     let html = '';
 
-    // Section 1: Rumors
+    // Section 1: Bluesky
+    html += '<h3>What NBA reporters are saying on Bluesky</h3>\n';
+    if (state.blueskyMentions.length > 0) {
+      html += '<ul>\n';
+      state.blueskyMentions.forEach(m => {
+        const author = escapeHtml(m.author_name || m.author_handle || 'Unknown');
+        const handle = escapeHtml(m.author_handle || '');
+        const text = escapeHtml(m.text || '');
+        const time = m.created_at ? new Date(m.created_at).toLocaleString() : '';
+        const url = m.web_url || '';
+        let li = '<li><strong>' + author + '</strong> (<a href="https://bsky.app/profile/' + handle + '">@' + handle + '</a>): ' + text;
+        if (time) li += ' — <em>' + time + '</em>';
+        if (url) li += ' <a href="' + escapeHtml(url) + '">View post</a>';
+        li += '</li>\n';
+        html += li;
+      });
+      html += '</ul>\n';
+    } else {
+      html += '<p><em>No recent Bluesky mentions found.</em></p>\n';
+    }
+
+    // Section 2: Rumors
     html += '<h3>More on ' + escapeHtml(state.playerName) + ' — Recent HoopsHype Rumors</h3>\n';
     if (state.rumors.length > 0) {
       html += '<ul>\n';
@@ -818,27 +843,6 @@
       html += '</ul>\n';
     } else {
       html += '<p><em>No matching rumors found.</em></p>\n';
-    }
-
-    // Section 2: Bluesky
-    html += '<h3>What NBA reporters are saying on Bluesky</h3>\n';
-    if (state.blueskyMentions.length > 0) {
-      html += '<ul>\n';
-      state.blueskyMentions.forEach(m => {
-        const author = escapeHtml(m.author_name || m.author_handle || 'Unknown');
-        const handle = escapeHtml(m.author_handle || '');
-        const text = escapeHtml(m.text || '');
-        const time = m.created_at ? new Date(m.created_at).toLocaleString() : '';
-        const url = m.web_url || '';
-        let li = '<li><strong>' + author + '</strong> (@' + handle + '): ' + text;
-        if (time) li += ' — <em>' + time + '</em>';
-        if (url) li += ' <a href="' + escapeHtml(url) + '">View post</a>';
-        li += '</li>\n';
-        html += li;
-      });
-      html += '</ul>\n';
-    } else {
-      html += '<p><em>No recent Bluesky mentions found.</em></p>\n';
     }
 
     return html;
