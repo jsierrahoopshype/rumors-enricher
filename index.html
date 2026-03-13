@@ -1037,19 +1037,47 @@
         /* 3. Set slug with React-compatible event */
         reactSet(slugField,slug);
 
-        /* 4. Find Classification dropdown and set to sports/nba */
+        /* 4. Find Classification text input in the Organization section */
         var clsField=null;
-        for(var k=0;k<labels.length;k++){
-          if(labels[k].textContent.trim().toLowerCase()==='classification'){
-            var cForId=labels[k].getAttribute('for');
+        console.log('[Presto Auto-Fill] Scanning for Classification field...');
+
+        /* Strategy A: Find label/div/span with exact text "Classification" */
+        for(var ci=0;ci<allEls.length;ci++){
+          var cText=allEls[ci].textContent.trim();
+          if(cText==='Classification'||cText==='classification'){
+            console.log('[Presto Auto-Fill] Found "Classification" label:',allEls[ci].tagName,allEls[ci]);
+            var cForId=allEls[ci].getAttribute('for');
             if(cForId){clsField=document.getElementById(cForId);}
-            if(!clsField){clsField=labels[k].parentElement.querySelector('select,input');}
-            if(!clsField){var csib=labels[k].nextElementSibling;if(csib&&csib.matches('select,input')){clsField=csib;}else if(csib){clsField=csib.querySelector('select,input');}}
-            if(clsField)break;
+            if(!clsField){clsField=allEls[ci].parentElement.querySelector('input');}
+            if(!clsField&&allEls[ci].parentElement.parentElement){clsField=allEls[ci].parentElement.parentElement.querySelector('input');}
+            if(!clsField){var csib=allEls[ci].nextElementSibling;if(csib){if(csib.matches('input')){clsField=csib;}else{clsField=csib.querySelector('input');}}}
+            if(clsField){console.log('[Presto Auto-Fill] Classification field found via label strategy:',clsField);break;}
           }
         }
-        if(!clsField){clsField=document.querySelector('[name="classification"],[id*="classification"],[aria-label*="Classification"],[aria-label*="classification"]');}
-        if(clsField){reactSet(clsField,'sports/nba');}
+
+        /* Strategy B: Direct attribute selectors */
+        if(!clsField){
+          clsField=document.querySelector('input[name="classification"],input[id="classification"],input[id*="classification"]');
+          if(clsField)console.log('[Presto Auto-Fill] Classification field found via name/id attribute:',clsField);
+        }
+
+        /* Strategy C: Search sidebar for inputs near "Classification" text */
+        if(!clsField){
+          var clsSidebar=document.querySelector('[class*="sidebar"],[class*="rail"],[class*="right-panel"],[class*="organization"],[role="complementary"]');
+          var clsRoot=clsSidebar||document;
+          var clsInputs=clsRoot.querySelectorAll('input[type="text"],input:not([type])');
+          for(var cj=0;cj<clsInputs.length;cj++){
+            var cContainer=clsInputs[cj].closest('[class*="field"],[class*="form-group"],[class*="classification"]')||clsInputs[cj].parentElement;
+            if(cContainer&&/\\bclassification\\b/i.test(cContainer.textContent.substring(0,80))){
+              clsField=clsInputs[cj];
+              console.log('[Presto Auto-Fill] Classification field found via sidebar proximity:',clsField);
+              break;
+            }
+          }
+        }
+
+        if(clsField){reactSet(clsField,'sports/nba');console.log('[Presto Auto-Fill] Classification set to sports/nba');}
+        else{console.warn('[Presto Auto-Fill] Could not find Classification field. All inputs:',document.querySelectorAll('input'));}
 
         /* 5. Confirmation alert */
         alert('Presto Auto-Fill Done!\\n\\nSlug: '+slug+'\\nClassification: '+(clsField?'sports/nba':'(field not found)'));
