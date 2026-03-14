@@ -539,7 +539,6 @@
   };
 
   const RUMORS_API = 'https://hoopshype-rumors-api.thejorgesierra.workers.dev/api/rumors';
-  const ARCHIVE_PARTS = 7;
   const BLUESKY_API = 'https://cdechoch-nba-buzz.hf.space/api/mentions/';
 
   // ─── Init from URL params ───
@@ -644,11 +643,8 @@
 
   // ─── Fetch rumors archive ───
   async function fetchRumorsArchive(playerName, headline) {
-    // Build URLs: /latest + /part/1 through /part/7
-    const urls = [RUMORS_API + '/latest'];
-    for (let i = 1; i <= ARCHIVE_PARTS; i++) {
-      urls.push(RUMORS_API + '/part/' + i);
-    }
+    // Fetch only /latest and /part/7 in parallel
+    const urls = [RUMORS_API + '/latest', RUMORS_API + '/part/7'];
 
     const responses = await Promise.allSettled(
       urls.map(url => fetch(url).then(r => {
@@ -664,11 +660,11 @@
       }
     });
 
-    // Deduplicate by date + first 60 chars of text
+    // Deduplicate by text content
     const seen = new Set();
     allEntries = allEntries.filter(entry => {
-      const key = (entry.date || '') + '|' + ((entry.text || entry.headline || '').slice(0, 60));
-      if (seen.has(key)) return false;
+      const key = (entry.text || entry.headline || '').trim();
+      if (!key || seen.has(key)) return false;
       seen.add(key);
       return true;
     });
@@ -691,14 +687,14 @@
       });
     }
 
-    // Sort by date descending (strip trailing timezone abbreviations for robust parsing)
+    // Sort by date descending AFTER tag filtering
     function parseRumorDate(d) {
       if (!d) return 0;
       const cleaned = d.replace(/\s+[A-Z]{2,5}$/, '');
       const t = new Date(cleaned).getTime();
       return isNaN(t) ? 0 : t;
     }
-    matched.sort((a, b) => parseRumorDate(b.date) - parseRumorDate(a.date));
+    matched.sort((a, b) => parseRumorDate(b.date || b.archive_date) - parseRumorDate(a.date || a.archive_date));
 
     return matched.slice(0, 10);
   }
@@ -742,7 +738,8 @@
       rumorsDiv.innerHTML = '<div class="no-results">No matching rumors found in the archive.</div>';
     } else {
       rumorsDiv.innerHTML = state.rumors.map(r => {
-        const date = r.date || 'Unknown date';
+        const rawDate = r.date || r.archive_date || '';
+        const date = formatRumorDate(rawDate);
         const text = escapeHtml(r.text || r.headline || '');
         const source = r.source || '';
         const sourceLink = r.source_url || r.url || '#';
@@ -844,7 +841,7 @@
     html += '<h3>More on ' + escapeHtml(state.playerName) + ' — Recent HoopsHype Rumors</h3>\n';
     if (state.rumors.length > 0) {
       state.rumors.forEach(r => {
-        const date = escapeHtml(r.date || '');
+        const date = escapeHtml(formatRumorDate(r.date || r.archive_date || ''));
         const text = escapeHtml(r.text || r.headline || '');
         const source = r.source || '';
         const sourceLink = r.source_url || r.url || '';
@@ -921,6 +918,14 @@
   }
 
   // ─── Helpers ───
+  function formatRumorDate(raw) {
+    if (!raw) return 'Unknown date';
+    const cleaned = raw.replace(/\s+[A-Z]{2,5}$/, '');
+    const d = new Date(cleaned);
+    if (isNaN(d.getTime())) return raw;
+    return d.toLocaleString();
+  }
+
   function escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;
