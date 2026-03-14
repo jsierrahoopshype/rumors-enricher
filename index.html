@@ -743,10 +743,16 @@
       rumorsDiv.innerHTML = filteredRumors.map(r => {
         const rawDate = r.date || r.archive_date || '';
         const date = formatRumorDate(rawDate);
-        const fullText = r.text || r.headline || '';
+        let fullText = r.text || r.headline || '';
         const quote = r.quote || '';
         const source = r.source || '';
         const sourceLink = r.source_url || r.url || '';
+        // Strip source/outlet name from end of text to avoid duplication
+        if (source) {
+          fullText = fullText.replace(new RegExp('\\s*[—–-]\\s*' + escapeRegExp(source) + '\\.?\\s*$', 'i'), '');
+          fullText = fullText.replace(new RegExp(',?\\s+(?:per|via|from|according to)\\s+' + escapeRegExp(source) + '\\.?\\s*$', 'i'), '');
+          fullText = fullText.replace(new RegExp('\\s+' + escapeRegExp(source) + '\\.?\\s*$', 'i'), '');
+        }
         // Build rumor text: only the quote portion is linked, preserve original spacing
         let rumorHtml;
         if (quote && sourceLink && fullText.includes(quote)) {
@@ -759,7 +765,7 @@
         } else {
           rumorHtml = escapeHtml(fullText);
         }
-        // Date and source at end: — M/D/YYYY SourceName(linked)
+        // Tail: [space]—[space][date][space][linked outlet]
         let tail = ' &mdash; ' + escapeHtml(date);
         if (source && sourceLink) {
           tail += ' <a href="' + escapeHtml(sourceLink) + '" target="_blank" rel="noopener" class="rumor-source-link">' + escapeHtml(source) + '</a>';
@@ -868,10 +874,16 @@
     if (outputRumors.length > 0) {
       outputRumors.forEach(r => {
         const date = escapeHtml(formatRumorDate(r.date || r.archive_date || ''));
-        const fullText = r.text || r.headline || '';
+        let fullText = r.text || r.headline || '';
         const quote = r.quote || '';
         const source = r.source || '';
         const sourceLink = r.source_url || r.url || '';
+        // Strip source/outlet name from end of text to avoid duplication
+        if (source) {
+          fullText = fullText.replace(new RegExp('\\s*[—–-]\\s*' + escapeRegExp(source) + '\\.?\\s*$', 'i'), '');
+          fullText = fullText.replace(new RegExp(',?\\s+(?:per|via|from|according to)\\s+' + escapeRegExp(source) + '\\.?\\s*$', 'i'), '');
+          fullText = fullText.replace(new RegExp('\\s+' + escapeRegExp(source) + '\\.?\\s*$', 'i'), '');
+        }
         html += '<blockquote style="border-left:4px solid #F7941D;padding:8px 12px;margin:10px 0;background:rgba(247,148,29,0.05)">\n';
         let rumorContent;
         if (quote && sourceLink && fullText.includes(quote)) {
@@ -960,6 +972,10 @@
     const d = new Date(cleaned);
     if (isNaN(d.getTime())) return raw;
     return (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear();
+  }
+
+  function escapeRegExp(str) {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
   function linkifyUrls(escapedText) {
