@@ -741,35 +741,34 @@
       rumorsDiv.innerHTML = '<div class="no-results">No matching rumors found in the archive.</div>';
     } else {
       rumorsDiv.innerHTML = filteredRumors.map(r => {
-        const rawDate = r.date || r.archive_date || '';
-        const date = formatRumorDate(rawDate);
+        // Step 1: Clean body text — strip outlet from end using simple string ops
         const rawText = r.text || r.headline || '';
+        const outlet = r.outlet || r.source || '';
+        const sourceUrl = r.source_url || r.url || '';
         const quote = r.quote || '';
-        const source = r.source || '';
-        const sourceLink = r.source_url || r.url || '';
-        // 1. Strip source from raw text before escaping
-        const cleanText = stripSource(rawText, source);
-        // 2. Build rumor HTML: link only the quote portion
-        let rumorHtml;
-        if (quote && sourceLink && cleanText.includes(quote)) {
-          const idx = cleanText.indexOf(quote);
-          const before = cleanText.substring(0, idx);
-          const after = cleanText.substring(idx + quote.length);
-          rumorHtml = escapeHtml(before) +
-            '<a href="' + escapeHtml(sourceLink) + '" target="_blank" rel="noopener">' + escapeHtml(quote) + '</a>' +
-            escapeHtml(after);
-        } else {
-          rumorHtml = escapeHtml(cleanText);
+        const cleanText = stripOutlet(rawText, outlet);
+        // Step 2: Format date from archive_date (YYYY-MM-DD → M/D/YYYY)
+        const date = formatRumorDate(r.archive_date || r.date || '');
+        // Step 3: Build HTML — escape body, link the quote, append tail
+        let body = escapeHtml(cleanText);
+        if (quote && sourceUrl && cleanText.includes(quote)) {
+          const escapedQuote = escapeHtml(quote);
+          const qIdx = body.indexOf(escapedQuote);
+          if (qIdx !== -1) {
+            body = body.substring(0, qIdx) +
+              '<a href="' + escapeHtml(sourceUrl) + '" target="_blank" rel="noopener">' + escapedQuote + '</a>' +
+              body.substring(qIdx + escapedQuote.length);
+          }
         }
-        // 3. Append tail: " — M/D/YYYY linked-outlet"
+        // Tail: " — M/D/YYYY outlet(linked)"
         let tail = ' \u2014 ' + escapeHtml(date);
-        if (source && sourceLink) {
-          tail += ' <a href="' + escapeHtml(sourceLink) + '" target="_blank" rel="noopener" class="rumor-source-link">' + escapeHtml(source) + '</a>';
-        } else if (source) {
-          tail += ' ' + escapeHtml(source);
+        if (outlet && sourceUrl) {
+          tail += ' <a href="' + escapeHtml(sourceUrl) + '" target="_blank" rel="noopener" class="rumor-source-link">' + escapeHtml(outlet) + '</a>';
+        } else if (outlet) {
+          tail += ' ' + escapeHtml(outlet);
         }
         return `<div class="rumor-entry">
-          <div class="rumor-text">${rumorHtml}${tail}</div>
+          <div class="rumor-text">${body}${tail}</div>
         </div>`;
       }).join('');
     }
@@ -869,34 +868,34 @@
     });
     if (outputRumors.length > 0) {
       outputRumors.forEach(r => {
-        const date = escapeHtml(formatRumorDate(r.date || r.archive_date || ''));
+        // Step 1: Clean body text — strip outlet from end
         const rawText = r.text || r.headline || '';
+        const outlet = r.outlet || r.source || '';
+        const sourceUrl = r.source_url || r.url || '';
         const quote = r.quote || '';
-        const source = r.source || '';
-        const sourceLink = r.source_url || r.url || '';
-        // 1. Strip source from raw text before escaping
-        const cleanText = stripSource(rawText, source);
+        const cleanText = stripOutlet(rawText, outlet);
+        // Step 2: Format date from archive_date
+        const date = formatRumorDate(r.archive_date || r.date || '');
+        // Step 3: Build HTML
         html += '<blockquote style="border-left:4px solid #F7941D;padding:8px 12px;margin:10px 0;background:rgba(247,148,29,0.05)">\n';
-        // 2. Build rumor HTML: link only the quote portion
-        let rumorContent;
-        if (quote && sourceLink && cleanText.includes(quote)) {
-          const idx = cleanText.indexOf(quote);
-          const before = cleanText.substring(0, idx);
-          const after = cleanText.substring(idx + quote.length);
-          rumorContent = escapeHtml(before) +
-            '<a href="' + escapeHtml(sourceLink) + '">' + escapeHtml(quote) + '</a>' +
-            escapeHtml(after);
-        } else {
-          rumorContent = escapeHtml(cleanText);
+        let body = escapeHtml(cleanText);
+        if (quote && sourceUrl && cleanText.includes(quote)) {
+          const escapedQuote = escapeHtml(quote);
+          const qIdx = body.indexOf(escapedQuote);
+          if (qIdx !== -1) {
+            body = body.substring(0, qIdx) +
+              '<a href="' + escapeHtml(sourceUrl) + '">' + escapedQuote + '</a>' +
+              body.substring(qIdx + escapedQuote.length);
+          }
         }
-        // 3. Append tail: " — M/D/YYYY linked-outlet"
-        rumorContent += ' \u2014 ' + date;
-        if (source && sourceLink) {
-          rumorContent += ' <a href="' + escapeHtml(sourceLink) + '">' + escapeHtml(source) + '</a>';
-        } else if (source) {
-          rumorContent += ' ' + escapeHtml(source);
+        // Tail: " — M/D/YYYY outlet(linked)"
+        body += ' \u2014 ' + escapeHtml(date);
+        if (outlet && sourceUrl) {
+          body += ' <a href="' + escapeHtml(sourceUrl) + '">' + escapeHtml(outlet) + '</a>';
+        } else if (outlet) {
+          body += ' ' + escapeHtml(outlet);
         }
-        html += rumorContent;
+        html += body;
         html += '\n</blockquote>\n';
       });
     } else {
@@ -960,35 +959,41 @@
   }
 
   // ─── Helpers ───
-  function stripSource(text, source) {
-    if (!source) return text.trim();
-    const srcLower = source.trim().toLowerCase();
-    let t = text;
-    // Strip trailing whitespace, periods, dates, dashes that may follow the source name
-    // e.g. "...quote."SourceName — 1/27/2026 EST" or "...quote." SourceName"
-    t = t.replace(/[\s.]*$/, '');
-    // Strip trailing date patterns (e.g. "— 1/27/2026", "- Jan 27, 2026 EST")
-    t = t.replace(/\s*[—–\-]\s*\d{1,2}\/\d{1,2}\/\d{2,4}(\s+[A-Z]{2,5})?\s*$/, '');
-    t = t.replace(/[\s.]*$/, '');
-    // Now check if text ends with source name
-    if (t.toLowerCase().endsWith(srcLower)) {
-      t = t.substring(0, t.length - srcLower.length);
+  function stripOutlet(text, outlet) {
+    if (!outlet) return text.trim();
+    var t = text.trimEnd();
+    var ol = outlet.trim();
+    // Simple endsWith check (case-insensitive)
+    if (t.length >= ol.length && t.substring(t.length - ol.length).toLowerCase() === ol.toLowerCase()) {
+      t = t.substring(0, t.length - ol.length);
     }
-    // Strip trailing attribution patterns: " — ", " – ", " - ", " via ", " per ", etc.
-    t = t.replace(/\s*(?:[—–\-]|,?\s*(?:via|per|from|according\s+to))\s*$/i, '');
+    t = t.trimEnd();
+    // Remove trailing attribution separators: " — ", " – ", " - ", " via ", " per "
+    var separators = [' \u2014 ', ' \u2013 ', ' - ', ' via ', ' per ', ' from ', '\u2014', '\u2013', '-'];
+    for (var i = 0; i < separators.length; i++) {
+      if (t.endsWith(separators[i])) {
+        t = t.substring(0, t.length - separators[i].length);
+        break;
+      }
+    }
     return t.trim();
   }
 
   function formatRumorDate(raw) {
     if (!raw) return 'Unknown date';
-    const cleaned = raw.replace(/\s+[A-Z]{2,5}$/, '');
-    const d = new Date(cleaned);
-    if (isNaN(d.getTime())) return raw;
-    return (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear();
-  }
-
-  function escapeRegExp(str) {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Handle YYYY-MM-DD format directly to avoid timezone issues
+    var parts = raw.trim().split('-');
+    if (parts.length === 3 && parts[0].length === 4) {
+      var y = parts[0];
+      var m = parseInt(parts[1], 10);
+      var d = parseInt(parts[2], 10);
+      if (m > 0 && d > 0) return m + '/' + d + '/' + y;
+    }
+    // Fallback for other date formats
+    var cleaned = raw.replace(/\s+[A-Z]{2,5}$/, '');
+    var dt = new Date(cleaned);
+    if (isNaN(dt.getTime())) return raw;
+    return (dt.getMonth() + 1) + '/' + dt.getDate() + '/' + dt.getFullYear();
   }
 
   function linkifyUrls(escapedText) {
