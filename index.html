@@ -749,9 +749,10 @@
         const sourceLink = r.source_url || r.url || '';
         // Strip source/outlet name from end of text to avoid duplication
         if (source) {
-          fullText = fullText.replace(new RegExp('\\s*[—–-]\\s*' + escapeRegExp(source) + '\\.?\\s*$', 'i'), '');
-          fullText = fullText.replace(new RegExp(',?\\s+(?:per|via|from|according to)\\s+' + escapeRegExp(source) + '\\.?\\s*$', 'i'), '');
-          fullText = fullText.replace(new RegExp('\\s+' + escapeRegExp(source) + '\\.?\\s*$', 'i'), '');
+          const esc = escapeRegExp(source);
+          fullText = fullText.replace(new RegExp('\\s*[—–-]\\s*' + esc + '\\.?\\s*$', 'i'), '');
+          fullText = fullText.replace(new RegExp(',?\\s+(?:per|via|from|according to)\\s+' + esc + '\\.?\\s*$', 'i'), '');
+          fullText = fullText.replace(new RegExp('\\s*' + esc + '\\.?\\s*$', 'i'), '');
         }
         // Build rumor text: only the quote portion is linked, preserve original spacing
         let rumorHtml;
@@ -764,6 +765,11 @@
             escapeHtml(after);
         } else {
           rumorHtml = escapeHtml(fullText);
+        }
+        // Strip escaped source name from end of rumorHtml as safety net
+        if (source) {
+          const escSource = escapeHtml(source);
+          rumorHtml = rumorHtml.replace(new RegExp('\\s*' + escapeRegExp(escSource) + '\\.?\\s*$', 'i'), '');
         }
         // Tail: [text] — [M/D/YYYY] [linked outlet]
         rumorHtml = rumorHtml.replace(/\s*$/, '');
@@ -881,9 +887,10 @@
         const sourceLink = r.source_url || r.url || '';
         // Strip source/outlet name from end of text to avoid duplication
         if (source) {
-          fullText = fullText.replace(new RegExp('\\s*[—–-]\\s*' + escapeRegExp(source) + '\\.?\\s*$', 'i'), '');
-          fullText = fullText.replace(new RegExp(',?\\s+(?:per|via|from|according to)\\s+' + escapeRegExp(source) + '\\.?\\s*$', 'i'), '');
-          fullText = fullText.replace(new RegExp('\\s+' + escapeRegExp(source) + '\\.?\\s*$', 'i'), '');
+          const esc = escapeRegExp(source);
+          fullText = fullText.replace(new RegExp('\\s*[—–-]\\s*' + esc + '\\.?\\s*$', 'i'), '');
+          fullText = fullText.replace(new RegExp(',?\\s+(?:per|via|from|according to)\\s+' + esc + '\\.?\\s*$', 'i'), '');
+          fullText = fullText.replace(new RegExp('\\s*' + esc + '\\.?\\s*$', 'i'), '');
         }
         html += '<blockquote style="border-left:4px solid #F7941D;padding:8px 12px;margin:10px 0;background:rgba(247,148,29,0.05)">\n';
         let rumorContent;
@@ -896,6 +903,11 @@
             escapeHtml(after);
         } else {
           rumorContent = escapeHtml(fullText);
+        }
+        // Strip escaped source name from end of rumorContent as safety net
+        if (source) {
+          const escSource = escapeHtml(source);
+          rumorContent = rumorContent.replace(new RegExp('\\s*' + escapeRegExp(escSource) + '\\.?\\s*$', 'i'), '');
         }
         rumorContent = rumorContent.replace(/\s*$/, '');
         rumorContent += ' \u2014 ' + date;
