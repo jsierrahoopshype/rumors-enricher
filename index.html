@@ -743,36 +743,25 @@
       rumorsDiv.innerHTML = filteredRumors.map(r => {
         const rawDate = r.date || r.archive_date || '';
         const date = formatRumorDate(rawDate);
-        let fullText = r.text || r.headline || '';
+        const rawText = r.text || r.headline || '';
         const quote = r.quote || '';
         const source = r.source || '';
         const sourceLink = r.source_url || r.url || '';
-        // Strip source/outlet name from end of text to avoid duplication
-        if (source) {
-          const esc = escapeRegExp(source);
-          fullText = fullText.replace(new RegExp('\\s*[—–-]\\s*' + esc + '\\.?\\s*$', 'i'), '');
-          fullText = fullText.replace(new RegExp(',?\\s+(?:per|via|from|according to)\\s+' + esc + '\\.?\\s*$', 'i'), '');
-          fullText = fullText.replace(new RegExp('\\s*' + esc + '\\.?\\s*$', 'i'), '');
-        }
-        // Build rumor text: only the quote portion is linked, preserve original spacing
+        // 1. Strip source from raw text before escaping
+        const cleanText = stripSource(rawText, source);
+        // 2. Build rumor HTML: link only the quote portion
         let rumorHtml;
-        if (quote && sourceLink && fullText.includes(quote)) {
-          const idx = fullText.indexOf(quote);
-          const before = fullText.substring(0, idx);
-          const after = fullText.substring(idx + quote.length);
+        if (quote && sourceLink && cleanText.includes(quote)) {
+          const idx = cleanText.indexOf(quote);
+          const before = cleanText.substring(0, idx);
+          const after = cleanText.substring(idx + quote.length);
           rumorHtml = escapeHtml(before) +
             '<a href="' + escapeHtml(sourceLink) + '" target="_blank" rel="noopener">' + escapeHtml(quote) + '</a>' +
             escapeHtml(after);
         } else {
-          rumorHtml = escapeHtml(fullText);
+          rumorHtml = escapeHtml(cleanText);
         }
-        // Strip escaped source name from end of rumorHtml as safety net
-        if (source) {
-          const escSource = escapeHtml(source);
-          rumorHtml = rumorHtml.replace(new RegExp('\\s*' + escapeRegExp(escSource) + '\\.?\\s*$', 'i'), '');
-        }
-        // Tail: [text] — [M/D/YYYY] [linked outlet]
-        rumorHtml = rumorHtml.replace(/\s*$/, '');
+        // 3. Append tail: " — M/D/YYYY linked-outlet"
         let tail = ' \u2014 ' + escapeHtml(date);
         if (source && sourceLink) {
           tail += ' <a href="' + escapeHtml(sourceLink) + '" target="_blank" rel="noopener" class="rumor-source-link">' + escapeHtml(source) + '</a>';
@@ -881,35 +870,26 @@
     if (outputRumors.length > 0) {
       outputRumors.forEach(r => {
         const date = escapeHtml(formatRumorDate(r.date || r.archive_date || ''));
-        let fullText = r.text || r.headline || '';
+        const rawText = r.text || r.headline || '';
         const quote = r.quote || '';
         const source = r.source || '';
         const sourceLink = r.source_url || r.url || '';
-        // Strip source/outlet name from end of text to avoid duplication
-        if (source) {
-          const esc = escapeRegExp(source);
-          fullText = fullText.replace(new RegExp('\\s*[—–-]\\s*' + esc + '\\.?\\s*$', 'i'), '');
-          fullText = fullText.replace(new RegExp(',?\\s+(?:per|via|from|according to)\\s+' + esc + '\\.?\\s*$', 'i'), '');
-          fullText = fullText.replace(new RegExp('\\s*' + esc + '\\.?\\s*$', 'i'), '');
-        }
+        // 1. Strip source from raw text before escaping
+        const cleanText = stripSource(rawText, source);
         html += '<blockquote style="border-left:4px solid #F7941D;padding:8px 12px;margin:10px 0;background:rgba(247,148,29,0.05)">\n';
+        // 2. Build rumor HTML: link only the quote portion
         let rumorContent;
-        if (quote && sourceLink && fullText.includes(quote)) {
-          const idx = fullText.indexOf(quote);
-          const before = fullText.substring(0, idx);
-          const after = fullText.substring(idx + quote.length);
+        if (quote && sourceLink && cleanText.includes(quote)) {
+          const idx = cleanText.indexOf(quote);
+          const before = cleanText.substring(0, idx);
+          const after = cleanText.substring(idx + quote.length);
           rumorContent = escapeHtml(before) +
             '<a href="' + escapeHtml(sourceLink) + '">' + escapeHtml(quote) + '</a>' +
             escapeHtml(after);
         } else {
-          rumorContent = escapeHtml(fullText);
+          rumorContent = escapeHtml(cleanText);
         }
-        // Strip escaped source name from end of rumorContent as safety net
-        if (source) {
-          const escSource = escapeHtml(source);
-          rumorContent = rumorContent.replace(new RegExp('\\s*' + escapeRegExp(escSource) + '\\.?\\s*$', 'i'), '');
-        }
-        rumorContent = rumorContent.replace(/\s*$/, '');
+        // 3. Append tail: " — M/D/YYYY linked-outlet"
         rumorContent += ' \u2014 ' + date;
         if (source && sourceLink) {
           rumorContent += ' <a href="' + escapeHtml(sourceLink) + '">' + escapeHtml(source) + '</a>';
@@ -980,6 +960,20 @@
   }
 
   // ─── Helpers ───
+  function stripSource(text, source) {
+    if (!source) return text.trim();
+    let t = text;
+    const srcLower = source.trim().toLowerCase();
+    // Check if text ends with the source name (case-insensitive), with optional trailing period/whitespace
+    const trimmed = t.replace(/[\s.]*$/, '');
+    if (trimmed.toLowerCase().endsWith(srcLower)) {
+      t = trimmed.substring(0, trimmed.length - srcLower.length);
+    }
+    // Strip trailing attribution patterns: " — ", " – ", " - ", " via ", " per ", " from ", " according to "
+    t = t.replace(/\s*(?:[—–\-]|via|per|from|according\s+to)\s*$/i, '');
+    return t.trim();
+  }
+
   function formatRumorDate(raw) {
     if (!raw) return 'Unknown date';
     const cleaned = raw.replace(/\s+[A-Z]{2,5}$/, '');
