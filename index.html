@@ -230,13 +230,6 @@
     font-size: 0.88rem;
   }
 
-  .rumor-date {
-    color: var(--orange);
-    font-weight: 600;
-    font-size: 0.8rem;
-    margin-bottom: 4px;
-  }
-
   .rumor-text a {
     color: var(--light-gray);
     text-decoration: none;
@@ -245,13 +238,10 @@
 
   .rumor-text a:hover { text-decoration: underline; }
 
-  .rumor-source a {
+  .rumor-text .rumor-source-link {
     color: var(--orange);
-    text-decoration: none;
-    font-size: 0.8rem;
+    font-size: 0.85rem;
   }
-
-  .rumor-source a:hover { text-decoration: underline; }
 
   .bsky-entry {
     padding: 10px 0;
@@ -281,6 +271,13 @@
     color: var(--light-gray);
     line-height: 1.5;
   }
+
+  .bsky-text a {
+    color: var(--orange);
+    text-decoration: none;
+  }
+
+  .bsky-text a:hover { text-decoration: underline; }
 
   .bsky-meta {
     font-size: 0.78rem;
@@ -484,7 +481,7 @@
   <!-- Results -->
   <div class="results-section" id="resultsSection">
     <div class="result-block" id="blueskyBlock">
-      <h2>What NBA reporters are saying on Bluesky</h2>
+      <h2>What NBA media is saying</h2>
       <div id="blueskyResults"></div>
     </div>
     <div class="result-block">
@@ -744,20 +741,27 @@
         const quote = r.quote || '';
         const source = r.source || '';
         const sourceLink = r.source_url || r.url || '';
-        // Build rumor text: only the quote portion is linked, everything else is plain text
+        // Build rumor text: only the quote portion is linked with spaces around it
         let rumorHtml;
         if (quote && sourceLink) {
           const parts = fullText.split(quote);
-          rumorHtml = escapeHtml(parts[0] || '') +
+          const before = escapeHtml(parts[0] || '').replace(/\s*$/, ' ');
+          const after = escapeHtml(parts.slice(1).join(quote)).replace(/^\s*/, ' ');
+          rumorHtml = before +
             '<a href="' + escapeHtml(sourceLink) + '" target="_blank" rel="noopener">' + escapeHtml(quote) + '</a>' +
-            escapeHtml(parts.slice(1).join(quote));
+            after;
         } else {
           rumorHtml = escapeHtml(fullText);
         }
+        // Date and source at end: — M/D/YYYY SourceName(linked)
+        let tail = ' &mdash; ' + escapeHtml(date);
+        if (source && sourceLink) {
+          tail += ' <a href="' + escapeHtml(sourceLink) + '" target="_blank" rel="noopener" class="rumor-source-link">' + escapeHtml(source) + '</a>';
+        } else if (source) {
+          tail += ' ' + escapeHtml(source);
+        }
         return `<div class="rumor-entry">
-          <div class="rumor-date">${escapeHtml(date)}</div>
-          <div class="rumor-text">${rumorHtml}</div>
-          ${source && sourceLink ? `<div class="rumor-source"><a href="${escapeHtml(sourceLink)}" target="_blank" rel="noopener">${escapeHtml(source)}</a></div>` : source ? `<div class="rumor-source">${escapeHtml(source)}</div>` : ''}
+          <div class="rumor-text">${rumorHtml}${tail}</div>
         </div>`;
       }).join('');
     }
@@ -777,7 +781,7 @@
         const url = m.web_url || '#';
         return `<div class="bsky-entry">
           <div><span class="bsky-author">${author}</span> <a class="bsky-handle" href="https://bsky.app/profile/${handle}" target="_blank" rel="noopener">@${handle}</a></div>
-          <div class="bsky-text">${text}</div>
+          <div class="bsky-text">${linkifyUrls(text)}</div>
           <div class="bsky-meta">${time} · <a href="${escapeHtml(url)}" target="_blank" rel="noopener">View post</a></div>
         </div>`;
       }).join('');
@@ -831,7 +835,7 @@
 
     // Section 1: Bluesky — only include if there are mentions
     if (state.blueskyMentions.length > 0) {
-      html += '<h3>What NBA reporters are saying on Bluesky</h3>\n';
+      html += '<h3>What NBA media is saying</h3>\n';
       html += '<ul>\n';
       state.blueskyMentions.forEach(m => {
         const author = escapeHtml(m.author_name || m.author_handle || 'Unknown');
@@ -839,7 +843,7 @@
         const text = escapeHtml(m.text || '');
         const time = m.created_at ? new Date(m.created_at).toLocaleString() : '';
         const url = m.web_url || '';
-        let li = '<li><strong>' + author + '</strong> (<a href="https://bsky.app/profile/' + handle + '">@' + handle + '</a>): ' + text;
+        let li = '<li><strong>' + author + '</strong> (<a href="https://bsky.app/profile/' + handle + '">@' + handle + '</a>): ' + linkifyUrls(text);
         if (time) li += ' — <em>' + time + '</em>';
         if (url) li += ' <a href="' + escapeHtml(url) + '">View post</a>';
         li += '</li>\n';
@@ -858,18 +862,24 @@
         const source = r.source || '';
         const sourceLink = r.source_url || r.url || '';
         html += '<blockquote style="border-left:4px solid #F7941D;padding:8px 12px;margin:10px 0;background:rgba(247,148,29,0.05)">\n';
-        html += '<strong>' + date + '</strong><br>\n';
+        let rumorContent;
         if (quote && sourceLink) {
           const parts = fullText.split(quote);
-          html += escapeHtml(parts[0] || '') +
+          const before = escapeHtml(parts[0] || '').replace(/\s*$/, ' ');
+          const after = escapeHtml(parts.slice(1).join(quote)).replace(/^\s*/, ' ');
+          rumorContent = before +
             '<a href="' + escapeHtml(sourceLink) + '">' + escapeHtml(quote) + '</a>' +
-            escapeHtml(parts.slice(1).join(quote));
+            after;
         } else {
-          html += escapeHtml(fullText);
+          rumorContent = escapeHtml(fullText);
         }
+        rumorContent += ' &mdash; ' + date;
         if (source && sourceLink) {
-          html += ' — <a href="' + escapeHtml(sourceLink) + '">' + escapeHtml(source) + '</a>';
+          rumorContent += ' <a href="' + escapeHtml(sourceLink) + '">' + escapeHtml(source) + '</a>';
+        } else if (source) {
+          rumorContent += ' ' + escapeHtml(source);
         }
+        html += rumorContent;
         html += '\n</blockquote>\n';
       });
     } else {
@@ -938,7 +948,14 @@
     const cleaned = raw.replace(/\s+[A-Z]{2,5}$/, '');
     const d = new Date(cleaned);
     if (isNaN(d.getTime())) return raw;
-    return d.toLocaleString();
+    return (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear();
+  }
+
+  function linkifyUrls(escapedText) {
+    // Match URLs (including truncated ones ending in ...)
+    return escapedText.replace(/(https?:\/\/[^\s<]+)/g, function(url) {
+      return '<a href="' + url.replace(/\.{3}$/, '') + '" target="_blank" rel="noopener">' + url + '</a>';
+    });
   }
 
   function escapeHtml(str) {
