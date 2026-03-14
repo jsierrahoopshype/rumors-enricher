@@ -962,15 +962,20 @@
   // ─── Helpers ───
   function stripSource(text, source) {
     if (!source) return text.trim();
-    let t = text;
     const srcLower = source.trim().toLowerCase();
-    // Check if text ends with the source name (case-insensitive), with optional trailing period/whitespace
-    const trimmed = t.replace(/[\s.]*$/, '');
-    if (trimmed.toLowerCase().endsWith(srcLower)) {
-      t = trimmed.substring(0, trimmed.length - srcLower.length);
+    let t = text;
+    // Strip trailing whitespace, periods, dates, dashes that may follow the source name
+    // e.g. "...quote."SourceName — 1/27/2026 EST" or "...quote." SourceName"
+    t = t.replace(/[\s.]*$/, '');
+    // Strip trailing date patterns (e.g. "— 1/27/2026", "- Jan 27, 2026 EST")
+    t = t.replace(/\s*[—–\-]\s*\d{1,2}\/\d{1,2}\/\d{2,4}(\s+[A-Z]{2,5})?\s*$/, '');
+    t = t.replace(/[\s.]*$/, '');
+    // Now check if text ends with source name
+    if (t.toLowerCase().endsWith(srcLower)) {
+      t = t.substring(0, t.length - srcLower.length);
     }
-    // Strip trailing attribution patterns: " — ", " – ", " - ", " via ", " per ", " from ", " according to "
-    t = t.replace(/\s*(?:[—–\-]|via|per|from|according\s+to)\s*$/i, '');
+    // Strip trailing attribution patterns: " — ", " – ", " - ", " via ", " per ", etc.
+    t = t.replace(/\s*(?:[—–\-]|,?\s*(?:via|per|from|according\s+to))\s*$/i, '');
     return t.trim();
   }
 
