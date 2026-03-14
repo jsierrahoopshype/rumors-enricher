@@ -483,7 +483,7 @@
 
   <!-- Results -->
   <div class="results-section" id="resultsSection">
-    <div class="result-block">
+    <div class="result-block" id="blueskyBlock">
       <h2>What NBA reporters are saying on Bluesky</h2>
       <div id="blueskyResults"></div>
     </div>
@@ -740,22 +740,35 @@
       rumorsDiv.innerHTML = state.rumors.map(r => {
         const rawDate = r.date || r.archive_date || '';
         const date = formatRumorDate(rawDate);
-        const text = escapeHtml(r.text || r.headline || '');
+        const fullText = r.text || r.headline || '';
+        const quote = r.quote || '';
         const source = r.source || '';
-        const sourceLink = r.source_url || r.url || '#';
+        const sourceLink = r.source_url || r.url || '';
+        // Build rumor text: only the quote portion is linked, everything else is plain text
+        let rumorHtml;
+        if (quote && sourceLink) {
+          const parts = fullText.split(quote);
+          rumorHtml = escapeHtml(parts[0] || '') +
+            '<a href="' + escapeHtml(sourceLink) + '" target="_blank" rel="noopener">' + escapeHtml(quote) + '</a>' +
+            escapeHtml(parts.slice(1).join(quote));
+        } else {
+          rumorHtml = escapeHtml(fullText);
+        }
         return `<div class="rumor-entry">
           <div class="rumor-date">${escapeHtml(date)}</div>
-          <div class="rumor-text"><a href="${escapeHtml(sourceLink)}" target="_blank" rel="noopener">${text}</a></div>
-          ${source ? `<div class="rumor-source"><a href="${escapeHtml(sourceLink)}" target="_blank" rel="noopener">${escapeHtml(source)}</a></div>` : ''}
+          <div class="rumor-text">${rumorHtml}</div>
+          ${source && sourceLink ? `<div class="rumor-source"><a href="${escapeHtml(sourceLink)}" target="_blank" rel="noopener">${escapeHtml(source)}</a></div>` : source ? `<div class="rumor-source">${escapeHtml(source)}</div>` : ''}
         </div>`;
       }).join('');
     }
 
-    // Bluesky
+    // Bluesky — hide entire block if no mentions
+    const bskyBlock = document.getElementById('blueskyBlock');
     const bskyDiv = document.getElementById('blueskyResults');
     if (state.blueskyMentions.length === 0) {
-      bskyDiv.innerHTML = '<div class="no-results">No recent Bluesky mentions found (last 7 days).</div>';
+      bskyBlock.style.display = 'none';
     } else {
+      bskyBlock.style.display = '';
       bskyDiv.innerHTML = state.blueskyMentions.map(m => {
         const author = escapeHtml(m.author_name || m.author_handle || 'Unknown');
         const handle = escapeHtml(m.author_handle || '');
@@ -816,9 +829,9 @@
   function buildOutputHTML() {
     let html = '';
 
-    // Section 1: Bluesky
-    html += '<h3>What NBA reporters are saying on Bluesky</h3>\n';
+    // Section 1: Bluesky — only include if there are mentions
     if (state.blueskyMentions.length > 0) {
+      html += '<h3>What NBA reporters are saying on Bluesky</h3>\n';
       html += '<ul>\n';
       state.blueskyMentions.forEach(m => {
         const author = escapeHtml(m.author_name || m.author_handle || 'Unknown');
@@ -833,8 +846,6 @@
         html += li;
       });
       html += '</ul>\n';
-    } else {
-      html += '<p><em>No recent Bluesky mentions found.</em></p>\n';
     }
 
     // Section 2: Rumors
@@ -842,15 +853,19 @@
     if (state.rumors.length > 0) {
       state.rumors.forEach(r => {
         const date = escapeHtml(formatRumorDate(r.date || r.archive_date || ''));
-        const text = escapeHtml(r.text || r.headline || '');
+        const fullText = r.text || r.headline || '';
+        const quote = r.quote || '';
         const source = r.source || '';
         const sourceLink = r.source_url || r.url || '';
         html += '<blockquote style="border-left:4px solid #F7941D;padding:8px 12px;margin:10px 0;background:rgba(247,148,29,0.05)">\n';
         html += '<strong>' + date + '</strong><br>\n';
-        if (sourceLink) {
-          html += '<a href="' + escapeHtml(sourceLink) + '">' + text + '</a>';
+        if (quote && sourceLink) {
+          const parts = fullText.split(quote);
+          html += escapeHtml(parts[0] || '') +
+            '<a href="' + escapeHtml(sourceLink) + '">' + escapeHtml(quote) + '</a>' +
+            escapeHtml(parts.slice(1).join(quote));
         } else {
-          html += text;
+          html += escapeHtml(fullText);
         }
         if (source && sourceLink) {
           html += ' — <a href="' + escapeHtml(sourceLink) + '">' + escapeHtml(source) + '</a>';
