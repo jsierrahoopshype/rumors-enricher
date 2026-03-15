@@ -755,9 +755,15 @@
           const escapedQuote = escapeHtml(quote);
           const qIdx = body.indexOf(escapedQuote);
           if (qIdx !== -1) {
-            body = body.substring(0, qIdx) +
+            let before = body.substring(0, qIdx);
+            let after = body.substring(qIdx + escapedQuote.length);
+            // Ensure space before link if previous char isn't whitespace or opening quote
+            if (before.length > 0 && !/[\s\u201C"(]$/.test(before)) before += ' ';
+            // Ensure space after link if next char isn't whitespace or closing punctuation
+            if (after.length > 0 && !/^[\s.,;:!?\u201D")\u2014\u2013-]/.test(after)) after = ' ' + after;
+            body = before +
               '<a href="' + escapeHtml(sourceUrl) + '" target="_blank" rel="noopener">' + escapedQuote + '</a>' +
-              body.substring(qIdx + escapedQuote.length);
+              after;
           }
         }
         // Tail: " — M/D/YYYY outlet(linked)"
@@ -883,9 +889,13 @@
           const escapedQuote = escapeHtml(quote);
           const qIdx = body.indexOf(escapedQuote);
           if (qIdx !== -1) {
-            body = body.substring(0, qIdx) +
+            let before = body.substring(0, qIdx);
+            let after = body.substring(qIdx + escapedQuote.length);
+            if (before.length > 0 && !/[\s\u201C"(]$/.test(before)) before += ' ';
+            if (after.length > 0 && !/^[\s.,;:!?\u201D")\u2014\u2013-]/.test(after)) after = ' ' + after;
+            body = before +
               '<a href="' + escapeHtml(sourceUrl) + '">' + escapedQuote + '</a>' +
-              body.substring(qIdx + escapedQuote.length);
+              after;
           }
         }
         // Tail: " — M/D/YYYY outlet(linked)"

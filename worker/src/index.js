@@ -11,6 +11,34 @@ const ENRICHER_BASE = 'https://jsierrahoopshype.github.io/rumors-enricher/';
 const PRESTO_COPY_BASE = 'https://presto-suite.gannettdigital.com/copy';
 const KV_TTL = 7 * 24 * 60 * 60; // 7 days in seconds
 
+// NBA team names and common non-player tags to exclude
+const NBA_TEAMS = new Set([
+  'atlanta hawks', 'boston celtics', 'brooklyn nets', 'charlotte hornets',
+  'chicago bulls', 'cleveland cavaliers', 'dallas mavericks', 'denver nuggets',
+  'detroit pistons', 'golden state warriors', 'houston rockets', 'indiana pacers',
+  'la clippers', 'los angeles clippers', 'los angeles lakers', 'la lakers',
+  'memphis grizzlies', 'miami heat', 'milwaukee bucks', 'minnesota timberwolves',
+  'new orleans pelicans', 'new york knicks', 'oklahoma city thunder',
+  'orlando magic', 'philadelphia 76ers', 'phoenix suns', 'portland trail blazers',
+  'sacramento kings', 'san antonio spurs', 'toronto raptors', 'utah jazz',
+  'washington wizards',
+  // Short/alternate names
+  'hawks', 'celtics', 'nets', 'hornets', 'bulls', 'cavaliers', 'cavs',
+  'mavericks', 'mavs', 'nuggets', 'pistons', 'warriors', 'rockets', 'pacers',
+  'clippers', 'lakers', 'grizzlies', 'heat', 'bucks', 'timberwolves', 'wolves',
+  'pelicans', 'knicks', 'thunder', 'magic', 'suns', '76ers', 'sixers',
+  'trail blazers', 'blazers', 'kings', 'spurs', 'raptors', 'jazz', 'wizards',
+]);
+
+const GENERIC_TAGS = new Set([
+  'free agency', 'injuries', 'trade', 'nba draft', 'draft', 'nba', 'rumors',
+  'trades', 'free agents', 'signings', 'contracts', 'extensions', 'waivers',
+  'buyouts', 'salary cap', 'trade deadline', 'offseason', 'preseason',
+  'all-star', 'playoffs', 'finals', 'lottery', 'rookie', 'veterans',
+  'coaching', 'front office', 'transactions', 'breaking news', 'analysis',
+  'nba news', 'hoopshype', 'nba rumors',
+]);
+
 export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(checkForNewRumors(env));
@@ -63,6 +91,7 @@ async function checkForNewRumors(env) {
       await env.SEEN_RUMORS.put(kvKey, JSON.stringify({
         headline: rumor.headline,
         url: rumor.url,
+        players: rumor.players,
         detectedAt: new Date().toISOString(),
       }), { expirationTtl: KV_TTL });
 
@@ -80,13 +109,12 @@ async function checkForNewRumors(env) {
 
 /**
  * Parse the HoopsHype rumors page HTML to find headlined rumor entries.
- * Looks for links to /story/sports/nba/rumors/ with <h2> headlines.
+ * Extracts tags from each article and uses them to identify player names.
  */
 function parseRumors(html) {
   const rumors = [];
 
-  // Match article links pointing to rumor stories with headlines
-  // Pattern: find anchor tags with /story/sports/nba/ URLs containing h2 headlines
+  // Match article blocks
   const articlePattern = /<article[^>]*>([\s\S]*?)<\/article>/gi;
   let articleMatch;
 
@@ -95,9 +123,8 @@ function parseRumors(html) {
     processArticleBlock(articleHtml, rumors);
   }
 
-  // Also try matching div-based layouts common on HoopsHype
+  // Fallback: h2 + link combinations
   if (rumors.length === 0) {
-    // Fallback: look for h2 + link combinations anywhere
     const h2LinkPattern = /<h2[^>]*>\s*<a[^>]*href="([^"]*\/story\/sports\/nba\/[^"]*)"[^>]*>\s*([\s\S]*?)\s*<\/a>\s*<\/h2>/gi;
     let match;
     while ((match = h2LinkPattern.exec(html)) !== null) {
@@ -106,8 +133,11 @@ function parseRumors(html) {
       if (headline && url) {
         const assetId = extractAssetId(url);
         if (assetId) {
-          const playerName = extractPlayerName(headline);
-          rumors.push({ headline, url, assetId, playerName });
+          const tags = extractTagsFromContext(html, url);
+          const players = extractPlayersFromTags(tags);
+          if (players.length > 0) {
+            rumors.push({ headline, url, assetId, players });
+          }
         }
       }
     }
@@ -123,8 +153,11 @@ function parseRumors(html) {
       if (headline && url) {
         const assetId = extractAssetId(url);
         if (assetId) {
-          const playerName = extractPlayerName(headline);
-          rumors.push({ headline, url, assetId, playerName });
+          const tags = extractTagsFromContext(html, url);
+          const players = extractPlayersFromTags(tags);
+          if (players.length > 0) {
+            rumors.push({ headline, url, assetId, players });
+          }
         }
       }
     }
@@ -136,7 +169,7 @@ function parseRumors(html) {
 function processArticleBlock(html, rumors) {
   // Check if this block has an h2 headline (proper rumor vs raw tweet embed)
   const h2Match = html.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
-  if (!h2Match) return; // No headline — skip raw tweet embeds
+  if (!h2Match) return;
 
   const headline = stripTags(h2Match[1]).trim();
   if (!headline) return;
@@ -149,41 +182,120 @@ function processArticleBlock(html, rumors) {
   const assetId = extractAssetId(url);
   if (!assetId) return;
 
-  const playerName = extractPlayerName(headline);
-  rumors.push({ headline, url, assetId, playerName });
+  // Extract tags from the article block
+  const tags = extractTagsFromArticle(html);
+  const players = extractPlayersFromTags(tags);
+
+  // Skip if no valid player tag found
+  if (players.length === 0) return;
+
+  rumors.push({ headline, url, assetId, players });
+}
+
+/**
+ * Extract tags from an article block HTML.
+ * Tags are typically in elements like <a> tags within a tag container,
+ * or in data attributes, or rel="tag" links.
+ */
+function extractTagsFromArticle(html) {
+  const tags = [];
+
+  // Look for rel="tag" links: <a href="..." rel="tag">Tag Name</a>
+  const relTagPattern = /<a[^>]*rel="tag"[^>]*>([\s\S]*?)<\/a>/gi;
+  let match;
+  while ((match = relTagPattern.exec(html)) !== null) {
+    const tag = stripTags(match[1]).trim();
+    if (tag) tags.push(tag);
+  }
+
+  // Look for tags in common tag container patterns
+  if (tags.length === 0) {
+    const tagContainerPattern = /<(?:div|span|ul)[^>]*class="[^"]*tag[^"]*"[^>]*>([\s\S]*?)<\/(?:div|span|ul)>/gi;
+    while ((match = tagContainerPattern.exec(html)) !== null) {
+      const containerHtml = match[1];
+      const linkPattern = /<a[^>]*>([\s\S]*?)<\/a>/gi;
+      let linkMatch;
+      while ((linkMatch = linkPattern.exec(containerHtml)) !== null) {
+        const tag = stripTags(linkMatch[1]).trim();
+        if (tag) tags.push(tag);
+      }
+    }
+  }
+
+  // Look for data-tags or data-keywords attributes
+  if (tags.length === 0) {
+    const dataTagMatch = html.match(/data-(?:tags|keywords)="([^"]*)"/i);
+    if (dataTagMatch) {
+      dataTagMatch[1].split(',').forEach(t => {
+        const tag = t.trim();
+        if (tag) tags.push(tag);
+      });
+    }
+  }
+
+  return tags;
+}
+
+/**
+ * Fallback: try to find tags near a URL in the full page HTML.
+ */
+function extractTagsFromContext(fullHtml, url) {
+  // Find the URL position and search nearby content for tag patterns
+  const urlIdx = fullHtml.indexOf(url);
+  if (urlIdx === -1) return [];
+
+  // Grab a window of HTML around the URL
+  const start = Math.max(0, urlIdx - 2000);
+  const end = Math.min(fullHtml.length, urlIdx + 3000);
+  const context = fullHtml.substring(start, end);
+
+  return extractTagsFromArticle(context);
+}
+
+/**
+ * Filter tags to find valid player names.
+ * A valid player tag:
+ *   a) Contains 2+ words
+ *   b) Is NOT a known NBA team name
+ *   c) Is NOT a generic topic tag
+ */
+function extractPlayersFromTags(tags) {
+  const players = [];
+  const seen = new Set();
+
+  for (const tag of tags) {
+    const trimmed = tag.trim();
+    const lower = trimmed.toLowerCase();
+    const wordCount = trimmed.split(/\s+/).length;
+
+    // Must be 2+ words
+    if (wordCount < 2) continue;
+
+    // Skip team names
+    if (NBA_TEAMS.has(lower)) continue;
+
+    // Skip generic tags
+    if (GENERIC_TAGS.has(lower)) continue;
+
+    // Deduplicate
+    if (seen.has(lower)) continue;
+    seen.add(lower);
+
+    players.push(trimmed);
+  }
+
+  return players;
 }
 
 /**
  * Extract asset ID from a URL.
- * HoopsHype URLs typically end with the asset ID, e.g.:
- * /story/sports/nba/rumors/2024/01/15/jaylen-brown-trade/89115076007/
  */
 function extractAssetId(url) {
   const match = url.match(/\/(\d{8,})\/?$/);
   if (match) return match[1];
 
-  // Try finding any long number sequence in the URL
   const nums = url.match(/(\d{8,})/);
   return nums ? nums[1] : null;
-}
-
-/**
- * Extract a likely player name from a headline.
- * Simple heuristic: take the first 2-3 capitalized words that look like a name.
- */
-function extractPlayerName(headline) {
-  // Remove common prefixes
-  let cleaned = headline
-    .replace(/^(Report|Sources|Rumor|NBA|Breaking):\s*/i, '')
-    .trim();
-
-  // Try to grab the first name-like sequence (2-3 capitalized words)
-  const nameMatch = cleaned.match(/^([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})/);
-  if (nameMatch) return nameMatch[1];
-
-  // Fallback: first two words
-  const words = cleaned.split(/\s+/).slice(0, 2);
-  return words.join(' ');
 }
 
 function decodeHtmlEntities(str) {
@@ -212,11 +324,12 @@ async function sendSlackNotification(env, rumor) {
     throw new Error('SLACK_WEBHOOK_URL not configured');
   }
 
-  const playerName = decodeHtmlEntities(rumor.playerName);
+  const players = rumor.players.map(p => decodeHtmlEntities(p));
+  const playerDisplay = players.join(', ');
   const headline = decodeHtmlEntities(rumor.headline);
 
   const enricherUrl = ENRICHER_BASE + '?' + new URLSearchParams({
-    player: playerName,
+    player: players.join(','),
     headline: headline.slice(0, 200),
     assetId: rumor.assetId,
   }).toString();
@@ -230,7 +343,7 @@ async function sendSlackNotification(env, rumor) {
     text: [
       ':basketball: *New HoopsHype Rumor detected*',
       '',
-      '*Player:* ' + playerName,
+      '*Player' + (players.length > 1 ? 's' : '') + ':* ' + playerDisplay,
       '*Headline:* ' + headline,
       '',
       ':arrow_right: <' + enricherUrl + '|Open Enricher>',
