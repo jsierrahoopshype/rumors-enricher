@@ -1411,9 +1411,12 @@
           });
         });
 
-        /* Open all found URLs */
-        enricherUrls.forEach(function(u){window.open(u,'_blank');});
-        prestoUrls.forEach(function(u){window.open(u,'_blank');});
+        /* Open tabs interleaved: Enricher 1, Presto 1, Enricher 2, Presto 2, ... */
+        var max=Math.max(enricherUrls.length,prestoUrls.length);
+        for(var i=0;i<max;i++){
+          if(i<enricherUrls.length)window.open(enricherUrls[i],'_blank');
+          if(i<prestoUrls.length)window.open(prestoUrls[i],'_blank');
+        }
 
         alert('Opening '+enricherUrls.length+' Enricher tabs and '+prestoUrls.length+' Presto tabs');
       }catch(e){alert('Bookmarklet error: '+e.message);}
