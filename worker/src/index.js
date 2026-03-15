@@ -39,6 +39,57 @@ const GENERIC_TAGS = new Set([
   'nba news', 'hoopshype', 'nba rumors',
 ]);
 
+// Known NBA players for headline fallback detection
+const NBA_PLAYERS = new Set([
+  // Eastern Conference
+  'jayson tatum', 'jaylen brown', 'jrue holiday', 'derrick white', 'kristaps porzingis',
+  'al horford', 'payton pritchard', 'sam hauser',
+  'tyrese maxey', 'joel embiid', 'paul george', 'caleb martin', 'kelly oubre',
+  'jalen brunson', 'karl-anthony towns', 'og anunoby', 'mikal bridges', 'josh hart',
+  'miles mcbride', 'donte divincenzo',
+  'donovan mitchell', 'darius garland', 'evan mobley', 'jarrett allen', 'max strus',
+  'caris levert', 'isaac okoro',
+  'paolo banchero', 'franz wagner', 'jalen suggs', 'wendell carter', 'cole anthony',
+  'scottie barnes', 'immanuel quickley', 'rj barrett', 'jakob poeltl', 'gradey dick',
+  'jimmy butler', 'bam adebayo', 'tyler herro', 'terry rozier', 'jaime jaquez',
+  'nikola vucevic', 'zach lavine', 'coby white', 'ayo dosunmu', 'patrick williams',
+  'giannis antetokounmpo', 'damian lillard', 'khris middleton', 'brook lopez',
+  'bobby portis', 'malik beasley',
+  'tyrese haliburton', 'pascal siakam', 'myles turner', 'aaron nesmith', 'bennedict mathurin',
+  'lamelo ball', 'brandon miller', 'miles bridges', 'mark williams', 'nick richards',
+  'trae young', 'dejounte murray', 'jalen johnson', 'clint capela', 'bogdan bogdanovic',
+  'cade cunningham', 'jaden ivey', 'ausar thompson', 'marcus sasser', 'jalen duren',
+  'bradley beal', 'kyle kuzma', 'jordan poole', 'bilal coulibaly', 'alex sarr',
+  // Western Conference
+  'nikola jokic', 'jamal murray', 'aaron gordon', 'michael porter', 'kentavious caldwell-pope',
+  'luka doncic', 'kyrie irving', 'pj washington', 'daniel gafford', 'dereck lively',
+  'shai gilgeous-alexander', 'jalen williams', 'chet holmgren', 'luguentz dort', 'alex caruso',
+  'anthony edwards', 'rudy gobert', 'julius randle', 'mike conley', 'naz reid',
+  'lebron james', 'anthony davis', 'austin reaves', 'dangelo russell', 'rui hachimura',
+  'dalton knecht', 'max christie',
+  'stephen curry', 'draymond green', 'andrew wiggins', 'jonathan kuminga', 'kevon looney',
+  'brandin podziemski', 'buddy hield',
+  'kawhi leonard', 'james harden', 'norman powell', 'ivica zubac', 'terance mann',
+  'kevin durant', 'devin booker', 'bradley beal', 'jusuf nurkic', 'grayson allen',
+  'ja morant', 'desmond bane', 'jaren jackson', 'marcus smart', 'luke kennard',
+  'zion williamson', 'brandon ingram', 'cj mccollum', 'herb jones', 'trey murphy',
+  'dejounte murray', 'jonas valanciunas',
+  'victor wembanyama', 'devin vassell', 'keldon johnson', 'tre jones', 'jeremy sochan',
+  'jalen green', 'alperen sengun', 'jabari smith', 'fred vanvleet', 'dillon brooks',
+  'amen thompson', 'cam whitmore',
+  'de\'aaron fox', 'domantas sabonis', 'keegan murray', 'malik monk', 'kevin huerter',
+  'lauri markkanen', 'collin sexton', 'john collins', 'jordan clarkson', 'walker kessler',
+  'anfernee simons', 'deandre ayton', 'jerami grant', 'shaedon sharpe', 'scoot henderson',
+  'deni avdija', 'toumani camara',
+  // Notable free agents / recently traded
+  'chris paul', 'russell westbrook', 'demar derozan', 'paul george',
+  'klay thompson', 'tobias harris', 'jonas valanciunas', 'andre drummond',
+  'dennis schroder', 'gary trent', 'bruce brown', 'obi toppin', 'isaiah hartenstein',
+  'neemias queta', 'derrick rose', 'montrezl harrell', 'dwight howard',
+  'alex len', 'jae crowder', 'markelle fultz', 'cam johnson', 'mikal bridges',
+  'ben simmons', 'james wiseman', 'marvin bagley', 'john wall',
+]);
+
 export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(checkForNewRumors(env));
@@ -109,12 +160,13 @@ async function checkForNewRumors(env) {
 
 /**
  * Parse the HoopsHype rumors page HTML to find headlined rumor entries.
- * Extracts tags from each article and uses them to identify player names.
+ * Uses the original working article detection, then extracts players
+ * from tags (primary) or headline (fallback).
  */
 function parseRumors(html) {
   const rumors = [];
 
-  // Match article blocks
+  // Match article blocks — this is the proven working approach
   const articlePattern = /<article[^>]*>([\s\S]*?)<\/article>/gi;
   let articleMatch;
 
@@ -133,8 +185,7 @@ function parseRumors(html) {
       if (headline && url) {
         const assetId = extractAssetId(url);
         if (assetId) {
-          const tags = extractTagsFromContext(html, url);
-          const players = extractPlayersFromTags(tags);
+          const players = extractPlayersFromHeadline(headline);
           if (players.length > 0) {
             rumors.push({ headline, url, assetId, players });
           }
@@ -153,8 +204,7 @@ function parseRumors(html) {
       if (headline && url) {
         const assetId = extractAssetId(url);
         if (assetId) {
-          const tags = extractTagsFromContext(html, url);
-          const players = extractPlayersFromTags(tags);
+          const players = extractPlayersFromHeadline(headline);
           if (players.length > 0) {
             rumors.push({ headline, url, assetId, players });
           }
@@ -169,7 +219,7 @@ function parseRumors(html) {
 function processArticleBlock(html, rumors) {
   // Check if this block has an h2 headline (proper rumor vs raw tweet embed)
   const h2Match = html.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
-  if (!h2Match) return;
+  if (!h2Match) return; // No headline — skip raw tweet embeds
 
   const headline = stripTags(h2Match[1]).trim();
   if (!headline) return;
@@ -182,11 +232,16 @@ function processArticleBlock(html, rumors) {
   const assetId = extractAssetId(url);
   if (!assetId) return;
 
-  // Extract tags from the article block
+  // Step 1: Try extracting players from rel="tag" links in the article
   const tags = extractTagsFromArticle(html);
-  const players = extractPlayersFromTags(tags);
+  let players = extractPlayersFromTags(tags);
 
-  // Skip if no valid player tag found
+  // Step 2: Fallback — extract known player names from the headline
+  if (players.length === 0) {
+    players = extractPlayersFromHeadline(headline);
+  }
+
+  // Step 3: Skip if no players found by either method
   if (players.length === 0) return;
 
   rumors.push({ headline, url, assetId, players });
@@ -194,8 +249,7 @@ function processArticleBlock(html, rumors) {
 
 /**
  * Extract tags from an article block HTML.
- * Tags are typically in elements like <a> tags within a tag container,
- * or in data attributes, or rel="tag" links.
+ * Looks for rel="tag" links, tag containers, and data attributes.
  */
 function extractTagsFromArticle(html) {
   const tags = [];
@@ -237,27 +291,8 @@ function extractTagsFromArticle(html) {
 }
 
 /**
- * Fallback: try to find tags near a URL in the full page HTML.
- */
-function extractTagsFromContext(fullHtml, url) {
-  // Find the URL position and search nearby content for tag patterns
-  const urlIdx = fullHtml.indexOf(url);
-  if (urlIdx === -1) return [];
-
-  // Grab a window of HTML around the URL
-  const start = Math.max(0, urlIdx - 2000);
-  const end = Math.min(fullHtml.length, urlIdx + 3000);
-  const context = fullHtml.substring(start, end);
-
-  return extractTagsFromArticle(context);
-}
-
-/**
  * Filter tags to find valid player names.
- * A valid player tag:
- *   a) Contains 2+ words
- *   b) Is NOT a known NBA team name
- *   c) Is NOT a generic topic tag
+ * A valid player tag: 2+ words, not a team name, not a generic tag.
  */
 function extractPlayersFromTags(tags) {
   const players = [];
@@ -268,16 +303,9 @@ function extractPlayersFromTags(tags) {
     const lower = trimmed.toLowerCase();
     const wordCount = trimmed.split(/\s+/).length;
 
-    // Must be 2+ words
     if (wordCount < 2) continue;
-
-    // Skip team names
     if (NBA_TEAMS.has(lower)) continue;
-
-    // Skip generic tags
     if (GENERIC_TAGS.has(lower)) continue;
-
-    // Deduplicate
     if (seen.has(lower)) continue;
     seen.add(lower);
 
@@ -288,12 +316,62 @@ function extractPlayersFromTags(tags) {
 }
 
 /**
+ * Fallback: extract known NBA player names from a headline.
+ * Finds all consecutive capitalized word pairs that match known players.
+ */
+function extractPlayersFromHeadline(headline) {
+  const players = [];
+  const seen = new Set();
+
+  // Remove common prefixes
+  const cleaned = headline
+    .replace(/^(Report|Sources|Rumor|NBA|Breaking):\s*/i, '')
+    .trim();
+
+  // Try matching each known player name in the headline (case-insensitive)
+  const headlineLower = cleaned.toLowerCase();
+  for (const player of NBA_PLAYERS) {
+    if (headlineLower.includes(player) && !seen.has(player)) {
+      seen.add(player);
+      // Capitalize the name properly from the headline
+      const idx = headlineLower.indexOf(player);
+      const originalCase = cleaned.substring(idx, idx + player.length);
+      players.push(originalCase);
+    }
+  }
+
+  // If no known players found, try two-consecutive-capitalized-words heuristic
+  // but only if they look like a person's name (not a team or generic phrase)
+  if (players.length === 0) {
+    const namePattern = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b/g;
+    let match;
+    while ((match = namePattern.exec(cleaned)) !== null) {
+      const candidate = match[1];
+      const lower = candidate.toLowerCase();
+      if (NBA_TEAMS.has(lower)) continue;
+      if (GENERIC_TAGS.has(lower)) continue;
+      // Must not be common non-name phrases
+      if (/^(The |This |That |When |What |Where |How |Could |Would |Should |Will )/i.test(candidate)) continue;
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        players.push(candidate);
+      }
+    }
+  }
+
+  return players;
+}
+
+/**
  * Extract asset ID from a URL.
+ * HoopsHype URLs typically end with the asset ID, e.g.:
+ * /story/sports/nba/rumors/2024/01/15/jaylen-brown-trade/89115076007/
  */
 function extractAssetId(url) {
   const match = url.match(/\/(\d{8,})\/?$/);
   if (match) return match[1];
 
+  // Try finding any long number sequence in the URL
   const nums = url.match(/(\d{8,})/);
   return nums ? nums[1] : null;
 }
