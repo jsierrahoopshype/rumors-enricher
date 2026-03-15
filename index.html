@@ -1159,50 +1159,88 @@
         /* 3. Set slug with React-compatible event */
         reactSet(slugField,slug);
 
-        /* 4. Find Classification text input in the Organization section */
+        /* 4. Find Classification combobox input */
         var clsField=null;
-        console.log('[Presto Auto-Fill] Scanning for Classification field...');
+        console.log('[Presto Auto-Fill] Scanning for Classification combobox...');
 
-        /* Strategy A: Find label/div/span with exact text "Classification" */
-        for(var ci=0;ci<allEls.length;ci++){
-          var cText=allEls[ci].textContent.trim();
-          if(cText==='Classification'||cText==='classification'){
-            console.log('[Presto Auto-Fill] Found "Classification" label:',allEls[ci].tagName,allEls[ci]);
-            var cForId=allEls[ci].getAttribute('for');
-            if(cForId){clsField=document.getElementById(cForId);}
-            if(!clsField){clsField=allEls[ci].parentElement.querySelector('input');}
-            if(!clsField&&allEls[ci].parentElement.parentElement){clsField=allEls[ci].parentElement.parentElement.querySelector('input');}
-            if(!clsField){var csib=allEls[ci].nextElementSibling;if(csib){if(csib.matches('input')){clsField=csib;}else{clsField=csib.querySelector('input');}}}
-            if(clsField){console.log('[Presto Auto-Fill] Classification field found via label strategy:',clsField);break;}
-          }
-        }
+        /* Strategy A: Find by known combobox id pattern */
+        clsField=document.querySelector('input[id*="components-form-token-input-control-6"]');
+        if(clsField)console.log('[Presto Auto-Fill] Classification field found via id pattern:',clsField);
 
-        /* Strategy B: Direct attribute selectors */
+        /* Strategy B: Find by aria role combobox near Classification label */
         if(!clsField){
-          clsField=document.querySelector('input[name="classification"],input[id="classification"],input[id*="classification"]');
-          if(clsField)console.log('[Presto Auto-Fill] Classification field found via name/id attribute:',clsField);
-        }
-
-        /* Strategy C: Search sidebar for inputs near "Classification" text */
-        if(!clsField){
-          var clsSidebar=document.querySelector('[class*="sidebar"],[class*="rail"],[class*="right-panel"],[class*="organization"],[role="complementary"]');
-          var clsRoot=clsSidebar||document;
-          var clsInputs=clsRoot.querySelectorAll('input[type="text"],input:not([type])');
-          for(var cj=0;cj<clsInputs.length;cj++){
-            var cContainer=clsInputs[cj].closest('[class*="field"],[class*="form-group"],[class*="classification"]')||clsInputs[cj].parentElement;
-            if(cContainer&&/\\bclassification\\b/i.test(cContainer.textContent.substring(0,80))){
-              clsField=clsInputs[cj];
-              console.log('[Presto Auto-Fill] Classification field found via sidebar proximity:',clsField);
+          var comboboxes=document.querySelectorAll('input[role="combobox"],input[aria-role="combobox"]');
+          for(var ci=0;ci<comboboxes.length;ci++){
+            var cContainer=comboboxes[ci].closest('[class*="field"],[class*="form-group"]')||comboboxes[ci].parentElement;
+            if(cContainer&&/\\bclassification\\b/i.test(cContainer.textContent.substring(0,120))){
+              clsField=comboboxes[ci];
+              console.log('[Presto Auto-Fill] Classification field found via combobox near label:',clsField);
               break;
             }
           }
         }
 
-        if(clsField){reactSet(clsField,'sports/nba');console.log('[Presto Auto-Fill] Classification set to sports/nba');}
-        else{console.warn('[Presto Auto-Fill] Could not find Classification field. All inputs:',document.querySelectorAll('input'));}
+        /* Strategy C: Find label then traverse to nearest combobox input */
+        if(!clsField){
+          for(var ci2=0;ci2<allEls.length;ci2++){
+            var cText=allEls[ci2].textContent.trim();
+            if(cText==='Classification'||cText==='classification'){
+              var cParent=allEls[ci2].closest('[class*="field"],[class*="form-group"]')||allEls[ci2].parentElement;
+              if(cParent){
+                clsField=cParent.querySelector('input[role="combobox"],input[aria-role="combobox"]')||cParent.querySelector('input');
+              }
+              if(!clsField&&allEls[ci2].parentElement){
+                clsField=allEls[ci2].parentElement.querySelector('input[role="combobox"],input[aria-role="combobox"]')||allEls[ci2].parentElement.querySelector('input');
+              }
+              if(clsField){console.log('[Presto Auto-Fill] Classification field found via label traversal:',clsField);break;}
+            }
+          }
+        }
 
-        /* 5. Confirmation alert */
-        alert('Presto Auto-Fill Done!\\n\\nSlug: '+slug+'\\nClassification: '+(clsField?'sports/nba':'(field not found)'));
+        if(clsField){
+          /* Focus the input first */
+          clsField.focus();
+          console.log('[Presto Auto-Fill] Classification field focused');
+
+          /* Set value using React nativeInputValueSetter */
+          var clsProto=window.HTMLInputElement.prototype;
+          var clsSetter=Object.getOwnPropertyDescriptor(clsProto,'value');
+          if(clsSetter&&clsSetter.set){clsSetter.set.call(clsField,'sports/nba');}else{clsField.value='sports/nba';}
+          clsField.dispatchEvent(new Event('input',{bubbles:true}));
+          console.log('[Presto Auto-Fill] Classification value set to sports/nba, waiting for dropdown...');
+
+          /* Wait 500ms for dropdown to appear, then click matching option */
+          setTimeout(function(){
+            var clsResult='sports/nba (typed)';
+            /* Look for dropdown options containing "sports/nba" */
+            var dropdownOptions=document.querySelectorAll('[role="option"],[role="listbox"] li,[class*="suggestion"],[class*="dropdown"] li,[class*="token-field__suggestion"],[class*="components-form-token-field__suggestion"]');
+            console.log('[Presto Auto-Fill] Found '+dropdownOptions.length+' dropdown options');
+            var matched=false;
+            for(var di=0;di<dropdownOptions.length;di++){
+              var optText=dropdownOptions[di].textContent.trim().toLowerCase();
+              console.log('[Presto Auto-Fill] Dropdown option '+di+': "'+optText+'"');
+              if(optText.indexOf('sports/nba')>=0){
+                dropdownOptions[di].click();
+                matched=true;
+                clsResult='sports/nba (selected from dropdown)';
+                console.log('[Presto Auto-Fill] Clicked dropdown option: '+optText);
+                break;
+              }
+            }
+            /* If no dropdown option found, try pressing Enter to confirm */
+            if(!matched){
+              console.log('[Presto Auto-Fill] No dropdown match found, dispatching Enter key');
+              clsField.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true}));
+              clsField.dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true}));
+              clsResult='sports/nba (Enter key)';
+            }
+            alert('Presto Auto-Fill Done!\\n\\nSlug: '+slug+'\\nClassification: '+clsResult);
+          },500);
+        }else{
+          console.warn('[Presto Auto-Fill] Could not find Classification field. All inputs:',document.querySelectorAll('input'));
+          /* 5. Confirmation alert (no classification) */
+          alert('Presto Auto-Fill Done!\\n\\nSlug: '+slug+'\\nClassification: (field not found)');
+        }
       }catch(e){alert('Bookmarklet error: '+e.message);}
     })()`;
     document.getElementById('bookmarkletLink').href = 'javascript:' + encodeURIComponent(code);
