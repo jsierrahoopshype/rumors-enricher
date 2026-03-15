@@ -779,14 +779,25 @@
       }).join('');
     }
 
+    // Bluesky — filter out posts that duplicate the current headline
+    const headlineWords = new Set((state.headline || '').toLowerCase().split(/\s+/).filter(w => w.length > 2));
+    const filteredBsky = state.blueskyMentions.filter(m => {
+      if (headlineWords.size === 0) return true;
+      const postWords = (m.text || '').toLowerCase().split(/\s+/).filter(w => w.length > 2);
+      if (postWords.length === 0) return true;
+      const overlap = postWords.filter(w => headlineWords.has(w)).length;
+      const overlapRatio = overlap / Math.min(headlineWords.size, postWords.length);
+      return overlapRatio <= 0.5;
+    });
+
     // Bluesky — hide entire block if no mentions
     const bskyBlock = document.getElementById('blueskyBlock');
     const bskyDiv = document.getElementById('blueskyResults');
-    if (state.blueskyMentions.length === 0) {
+    if (filteredBsky.length === 0) {
       bskyBlock.style.display = 'none';
     } else {
       bskyBlock.style.display = '';
-      bskyDiv.innerHTML = state.blueskyMentions.map(m => {
+      bskyDiv.innerHTML = filteredBsky.map(m => {
         const author = escapeHtml(m.author_name || m.author_handle || 'Unknown');
         const handle = escapeHtml(m.author_handle || '');
         const rawText = m.text || '';
@@ -846,11 +857,19 @@
   function buildOutputHTML() {
     let html = '';
 
-    // Section 1: Bluesky — only include if there are mentions
-    if (state.blueskyMentions.length > 0) {
+    // Section 1: Bluesky — only include if there are mentions (dedup against headline)
+    const outputHeadlineWords = new Set((state.headline || '').toLowerCase().split(/\s+/).filter(w => w.length > 2));
+    const outputBsky = state.blueskyMentions.filter(m => {
+      if (outputHeadlineWords.size === 0) return true;
+      const pw = (m.text || '').toLowerCase().split(/\s+/).filter(w => w.length > 2);
+      if (pw.length === 0) return true;
+      const ol = pw.filter(w => outputHeadlineWords.has(w)).length;
+      return ol / Math.min(outputHeadlineWords.size, pw.length) <= 0.5;
+    });
+    if (outputBsky.length > 0) {
       html += '<h3>What NBA media is saying</h3>\n';
       html += '<ul>\n';
-      state.blueskyMentions.forEach(m => {
+      outputBsky.forEach(m => {
         const author = escapeHtml(m.author_name || m.author_handle || 'Unknown');
         const handle = escapeHtml(m.author_handle || '');
         const rawText = m.text || '';
@@ -867,7 +886,7 @@
 
     // Section 2: Rumors — deduplicate against Bluesky URLs
     html += '<h3>More on ' + escapeHtml(state.playerName) + ' — Recent HoopsHype Rumors</h3>\n';
-    const outputBskyUrls = new Set(state.blueskyMentions.map(m => m.web_url).filter(Boolean));
+    const outputBskyUrls = new Set(outputBsky.map(m => m.web_url).filter(Boolean));
     const outputRumors = state.rumors.filter(r => {
       const url = r.source_url || r.url || '';
       return !url || !outputBskyUrls.has(url);
@@ -1163,38 +1182,60 @@
         var clsField=null;
         console.log('[Presto Auto-Fill] Scanning for Classification combobox...');
 
-        /* Strategy A: Find by known combobox id pattern */
-        clsField=document.querySelector('input[id*="components-form-token-input-control-6"]');
-        if(clsField)console.log('[Presto Auto-Fill] Classification field found via id pattern:',clsField);
+        /* Helper: check if a combobox is the Site field (contains HoopsHype token) */
+        function isSiteField(input){
+          var tokenContainer=input.closest('[class*="form-token-field"],[class*="token-field"]');
+          if(tokenContainer){
+            var tokenText=tokenContainer.textContent.toLowerCase();
+            if(tokenText.indexOf('hoopshype')>=0||tokenText.indexOf('hoops hype')>=0)return true;
+          }
+          if((input.value||'').toLowerCase().indexOf('hoopshype')>=0)return true;
+          if((input.value||'').toLowerCase().indexOf('hoops hype')>=0)return true;
+          return false;
+        }
 
-        /* Strategy B: Find by aria role combobox near Classification label */
+        /* Strategy A: Find the "Classification" label, then get its associated combobox */
+        var allLabels=document.querySelectorAll('label,span,div,h3,h4');
+        for(var ci=0;ci<allLabels.length;ci++){
+          var cLabelText=allLabels[ci].textContent.trim();
+          if(cLabelText==='Classification'){
+            console.log('[Presto Auto-Fill] Found "Classification" label:',allLabels[ci]);
+            /* Check for "for" attribute */
+            var cForId=allLabels[ci].getAttribute('for');
+            if(cForId){clsField=document.getElementById(cForId);}
+            /* Traverse up to field wrapper and find combobox */
+            if(!clsField){
+              var cWrap=allLabels[ci].closest('[class*="field"],[class*="form-group"],[class*="sidebar"]');
+              for(var cUp=allLabels[ci].parentElement;cUp&&!cWrap&&cUp!==document.body;cUp=cUp.parentElement){cWrap=cUp;}
+              if(cWrap){clsField=cWrap.querySelector('input[role="combobox"]')||cWrap.querySelector('input');}
+            }
+            if(clsField&&!isSiteField(clsField)){
+              console.log('[Presto Auto-Fill] Classification field found via label:',clsField.id);
+              break;
+            }
+            clsField=null; /* Reset if it was the Site field */
+          }
+        }
+
+        /* Strategy B: Find all token-input comboboxes, skip the Site field, pick the next one */
         if(!clsField){
-          var comboboxes=document.querySelectorAll('input[role="combobox"],input[aria-role="combobox"]');
-          for(var ci=0;ci<comboboxes.length;ci++){
-            var cContainer=comboboxes[ci].closest('[class*="field"],[class*="form-group"]')||comboboxes[ci].parentElement;
-            if(cContainer&&/\\bclassification\\b/i.test(cContainer.textContent.substring(0,120))){
-              clsField=comboboxes[ci];
-              console.log('[Presto Auto-Fill] Classification field found via combobox near label:',clsField);
+          var allComboboxes=document.querySelectorAll('input[id*="components-form-token-input-control"]');
+          console.log('[Presto Auto-Fill] Found '+allComboboxes.length+' token-input comboboxes');
+          for(var cb=0;cb<allComboboxes.length;cb++){
+            console.log('[Presto Auto-Fill] Combobox '+cb+': id='+allComboboxes[cb].id+' isSite='+isSiteField(allComboboxes[cb]));
+            if(!isSiteField(allComboboxes[cb])){
+              clsField=allComboboxes[cb];
+              console.log('[Presto Auto-Fill] Classification field found by skipping Site field: id='+clsField.id);
               break;
             }
           }
         }
 
-        /* Strategy C: Find label then traverse to nearest combobox input */
+        /* Strategy C: Fallback — find by known id suffix */
         if(!clsField){
-          for(var ci2=0;ci2<allEls.length;ci2++){
-            var cText=allEls[ci2].textContent.trim();
-            if(cText==='Classification'||cText==='classification'){
-              var cParent=allEls[ci2].closest('[class*="field"],[class*="form-group"]')||allEls[ci2].parentElement;
-              if(cParent){
-                clsField=cParent.querySelector('input[role="combobox"],input[aria-role="combobox"]')||cParent.querySelector('input');
-              }
-              if(!clsField&&allEls[ci2].parentElement){
-                clsField=allEls[ci2].parentElement.querySelector('input[role="combobox"],input[aria-role="combobox"]')||allEls[ci2].parentElement.querySelector('input');
-              }
-              if(clsField){console.log('[Presto Auto-Fill] Classification field found via label traversal:',clsField);break;}
-            }
-          }
+          clsField=document.querySelector('input[id*="components-form-token-input-control-6"]');
+          if(clsField&&isSiteField(clsField))clsField=null;
+          if(clsField)console.log('[Presto Auto-Fill] Classification field found via id-6 pattern:',clsField);
         }
 
         if(clsField){
