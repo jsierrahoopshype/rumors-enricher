@@ -789,12 +789,12 @@
       bskyDiv.innerHTML = state.blueskyMentions.map(m => {
         const author = escapeHtml(m.author_name || m.author_handle || 'Unknown');
         const handle = escapeHtml(m.author_handle || '');
-        const text = escapeHtml(m.text || '');
+        const rawText = m.text || '';
         const time = m.created_at ? new Date(m.created_at).toLocaleString() : '';
         const url = m.web_url || '#';
         return `<div class="bsky-entry">
           <div><span class="bsky-author">${author}</span> <a class="bsky-handle" href="https://bsky.app/profile/${handle}" target="_blank" rel="noopener">@${handle}</a></div>
-          <div class="bsky-text">${linkifyUrls(text)}</div>
+          <div class="bsky-text">${linkifyText(rawText)}</div>
           <div class="bsky-meta">${time} · <a href="${escapeHtml(url)}" target="_blank" rel="noopener">View post</a></div>
         </div>`;
       }).join('');
@@ -853,10 +853,10 @@
       state.blueskyMentions.forEach(m => {
         const author = escapeHtml(m.author_name || m.author_handle || 'Unknown');
         const handle = escapeHtml(m.author_handle || '');
-        const text = escapeHtml(m.text || '');
+        const rawText = m.text || '';
         const time = m.created_at ? new Date(m.created_at).toLocaleString() : '';
         const url = m.web_url || '';
-        let li = '<li><strong>' + author + '</strong> (<a href="https://bsky.app/profile/' + handle + '">@' + handle + '</a>): ' + linkifyUrls(text);
+        let li = '<li><strong>' + author + '</strong> (<a href="https://bsky.app/profile/' + handle + '">@' + handle + '</a>): ' + linkifyText(rawText);
         if (time) li += ' — <em>' + time + '</em>';
         if (url) li += ' <a href="' + escapeHtml(url) + '">View post</a>';
         li += '</li>\n';
@@ -1006,11 +1006,31 @@
     return (dt.getMonth() + 1) + '/' + dt.getDate() + '/' + dt.getFullYear();
   }
 
-  function linkifyUrls(escapedText) {
-    // Match URLs (including truncated ones ending in ...)
-    return escapedText.replace(/(https?:\/\/[^\s<]+)/g, function(url) {
-      return '<a href="' + url.replace(/\.{3}$/, '') + '" target="_blank" rel="noopener">' + url + '</a>';
-    });
+  function linkifyText(rawText) {
+    // Work on raw (unescaped) text. Find URLs, split around them,
+    // escape non-URL parts, and wrap URLs in anchor tags.
+    // Matches http(s):// URLs and bare domain URLs (e.g. hoopshype.com/path...)
+    var urlPattern = /https?:\/\/[^\s]+|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+(?:com|org|net|io|co|us|info|biz|me|tv|app|dev|space|site)(?:\/[^\s]*)?/gi;
+    var result = '';
+    var lastIdx = 0;
+    var match;
+    while ((match = urlPattern.exec(rawText)) !== null) {
+      // Escape text before this URL
+      if (match.index > lastIdx) {
+        result += escapeHtml(rawText.substring(lastIdx, match.index));
+      }
+      var url = match[0];
+      var display = escapeHtml(url);
+      var href = url.replace(/(?:\.{2,}|\u2026)$/, '');
+      if (!/^https?:\/\//i.test(href)) href = 'https://' + href;
+      result += '<a href="' + escapeHtml(href) + '" target="_blank" rel="noopener">' + display + '</a>';
+      lastIdx = match.index + url.length;
+    }
+    // Escape remaining text after last URL
+    if (lastIdx < rawText.length) {
+      result += escapeHtml(rawText.substring(lastIdx));
+    }
+    return result || escapeHtml(rawText);
   }
 
   function escapeHtml(str) {
