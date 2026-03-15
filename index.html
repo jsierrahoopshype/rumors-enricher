@@ -779,15 +779,15 @@
       }).join('');
     }
 
-    // Bluesky — filter out posts that duplicate the current headline
-    const headlineWords = new Set((state.headline || '').toLowerCase().split(/\s+/).filter(w => w.length > 2));
+    // Bluesky — filter out posts that duplicate any loaded rumor (by URL or first 80 chars of text)
+    const rumorUrls = new Set(state.rumors.map(r => r.source_url || r.url || '').filter(Boolean));
+    const rumorPrefixes = new Set(state.rumors.map(r => (r.text || r.headline || '').substring(0, 80).toLowerCase().trim()).filter(Boolean));
     const filteredBsky = state.blueskyMentions.filter(m => {
-      if (headlineWords.size === 0) return true;
-      const postWords = (m.text || '').toLowerCase().split(/\s+/).filter(w => w.length > 2);
-      if (postWords.length === 0) return true;
-      const overlap = postWords.filter(w => headlineWords.has(w)).length;
-      const overlapRatio = overlap / Math.min(headlineWords.size, postWords.length);
-      return overlapRatio <= 0.5;
+      const bUrl = m.web_url || '';
+      if (bUrl && rumorUrls.has(bUrl)) return false;
+      const bPrefix = (m.text || '').substring(0, 80).toLowerCase().trim();
+      if (bPrefix && rumorPrefixes.has(bPrefix)) return false;
+      return true;
     });
 
     // Bluesky — hide entire block if no mentions
@@ -857,14 +857,15 @@
   function buildOutputHTML() {
     let html = '';
 
-    // Section 1: Bluesky — only include if there are mentions (dedup against headline)
-    const outputHeadlineWords = new Set((state.headline || '').toLowerCase().split(/\s+/).filter(w => w.length > 2));
+    // Section 1: Bluesky — dedup against all loaded rumors (by URL or first 80 chars)
+    const outRumorUrls = new Set(state.rumors.map(r => r.source_url || r.url || '').filter(Boolean));
+    const outRumorPrefixes = new Set(state.rumors.map(r => (r.text || r.headline || '').substring(0, 80).toLowerCase().trim()).filter(Boolean));
     const outputBsky = state.blueskyMentions.filter(m => {
-      if (outputHeadlineWords.size === 0) return true;
-      const pw = (m.text || '').toLowerCase().split(/\s+/).filter(w => w.length > 2);
-      if (pw.length === 0) return true;
-      const ol = pw.filter(w => outputHeadlineWords.has(w)).length;
-      return ol / Math.min(outputHeadlineWords.size, pw.length) <= 0.5;
+      const bUrl = m.web_url || '';
+      if (bUrl && outRumorUrls.has(bUrl)) return false;
+      const bPrefix = (m.text || '').substring(0, 80).toLowerCase().trim();
+      if (bPrefix && outRumorPrefixes.has(bPrefix)) return false;
+      return true;
     });
     if (outputBsky.length > 0) {
       html += '<h3>What NBA media is saying</h3>\n';
@@ -1239,44 +1240,61 @@
         }
 
         if(clsField){
-          /* Focus the input first */
-          clsField.focus();
-          console.log('[Presto Auto-Fill] Classification field focused');
+          /* Helper: type a search term into the combobox using React setter */
+          function clsType(term){
+            clsField.focus();
+            var clsProto=window.HTMLInputElement.prototype;
+            var clsSetter=Object.getOwnPropertyDescriptor(clsProto,'value');
+            if(clsSetter&&clsSetter.set){clsSetter.set.call(clsField,term);}else{clsField.value=term;}
+            clsField.dispatchEvent(new Event('input',{bubbles:true}));
+            console.log('[Presto Auto-Fill] Typed "'+term+'" into Classification');
+          }
 
-          /* Set value using React nativeInputValueSetter */
-          var clsProto=window.HTMLInputElement.prototype;
-          var clsSetter=Object.getOwnPropertyDescriptor(clsProto,'value');
-          if(clsSetter&&clsSetter.set){clsSetter.set.call(clsField,'sports/nba');}else{clsField.value='sports/nba';}
-          clsField.dispatchEvent(new Event('input',{bubbles:true}));
-          console.log('[Presto Auto-Fill] Classification value set to sports/nba, waiting for dropdown...');
-
-          /* Wait 500ms for dropdown to appear, then click matching option */
-          setTimeout(function(){
-            var clsResult='sports/nba (typed)';
-            /* Look for dropdown options containing "sports/nba" */
+          /* Helper: find and click a dropdown option containing target text */
+          function clsPickOption(target){
             var dropdownOptions=document.querySelectorAll('[role="option"],[role="listbox"] li,[class*="suggestion"],[class*="dropdown"] li,[class*="token-field__suggestion"],[class*="components-form-token-field__suggestion"]');
             console.log('[Presto Auto-Fill] Found '+dropdownOptions.length+' dropdown options');
-            var matched=false;
             for(var di=0;di<dropdownOptions.length;di++){
               var optText=dropdownOptions[di].textContent.trim().toLowerCase();
               console.log('[Presto Auto-Fill] Dropdown option '+di+': "'+optText+'"');
-              if(optText.indexOf('sports/nba')>=0){
+              if(optText.indexOf(target)>=0){
                 dropdownOptions[di].click();
-                matched=true;
-                clsResult='sports/nba (selected from dropdown)';
                 console.log('[Presto Auto-Fill] Clicked dropdown option: '+optText);
-                break;
+                return true;
               }
             }
-            /* If no dropdown option found, try pressing Enter to confirm */
-            if(!matched){
-              console.log('[Presto Auto-Fill] No dropdown match found, dispatching Enter key');
+            return false;
+          }
+
+          /* Step 1: Type "nba" and wait 800ms for dropdown */
+          clsType('nba');
+          console.log('[Presto Auto-Fill] Waiting 800ms for dropdown...');
+
+          setTimeout(function(){
+            /* Step 2: Try to pick an option containing "nba" */
+            if(clsPickOption('sports/nba')||clsPickOption('nba')){
+              alert('Presto Auto-Fill Done!\\n\\nSlug: '+slug+'\\nClassification: sports/nba (selected from dropdown)');
+              return;
+            }
+
+            /* Step 3: No match — try typing "sports" instead */
+            console.log('[Presto Auto-Fill] No "nba" option found, trying "sports"...');
+            clsType('sports');
+
+            setTimeout(function(){
+              if(clsPickOption('sports/nba')||clsPickOption('nba')){
+                alert('Presto Auto-Fill Done!\\n\\nSlug: '+slug+'\\nClassification: sports/nba (selected from dropdown)');
+                return;
+              }
+
+              /* Step 4: Last resort — press Enter to submit whatever is typed */
+              console.log('[Presto Auto-Fill] No dropdown match, dispatching Enter key');
+              clsType('sports/nba');
               clsField.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true}));
               clsField.dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true}));
-              clsResult='sports/nba (Enter key)';
-            }
-            alert('Presto Auto-Fill Done!\\n\\nSlug: '+slug+'\\nClassification: '+clsResult);
-          },500);
+              alert('Presto Auto-Fill Done!\\n\\nSlug: '+slug+'\\nClassification: sports/nba (Enter key fallback)');
+            },800);
+          },800);
         }else{
           console.warn('[Presto Auto-Fill] Could not find Classification field. All inputs:',document.querySelectorAll('input'));
           /* 5. Confirmation alert (no classification) */
