@@ -520,6 +520,30 @@
     </div>
   </div>
 
+  <!-- Slack Bookmarklet -->
+  <div class="bookmarklet-section">
+    <h2>Slack Helper Bookmarklet</h2>
+    <p style="font-size:0.85rem; color:var(--light-gray); margin-bottom:12px;">
+      Drag this link to your bookmarks bar. Click it while on a Slack page to open all Enricher and Presto Copy links from the last 5 minutes.
+    </p>
+    <a class="bookmarklet-link" id="slackBookmarkletLink" href="#">Open All ARAs (Slack)</a>
+    <div class="bookmarklet-instructions">
+      <strong>How to install:</strong>
+      <ol>
+        <li>Make sure your bookmarks bar is visible (<code>Ctrl+Shift+B</code> / <code>Cmd+Shift+B</code>)</li>
+        <li>Drag the <strong>"Open All ARAs (Slack)"</strong> button above into your bookmarks bar</li>
+        <li>Navigate to a Slack channel with Enricher notifications</li>
+        <li>Click the bookmarklet &mdash; it will:
+          <ul style="list-style:disc; padding-left:18px; margin-top:4px;">
+            <li>Scan visible Slack messages from the last 5 minutes</li>
+            <li>Find all <strong>Enricher</strong> links (<code>rumors-enricher</code>) and <strong>Presto Copy</strong> links (<code>presto-suite.gannettdigital.com/copy</code>)</li>
+            <li>Open each link in a new tab</li>
+          </ul>
+        </li>
+      </ol>
+    </div>
+  </div>
+
 </div>
 
 <div class="toast" id="toast"></div>
@@ -551,6 +575,13 @@
       state.headline = headline || '';
       state.assetId = assetId || '';
       startEnrich();
+
+      // Auto-open Presto Copy URL if assetId is present
+      if (assetId) {
+        setTimeout(function() {
+          window.open('https://presto-suite.gannettdigital.com/copy?assetId=' + encodeURIComponent(assetId) + '&siteCode=SHHP', '_blank');
+        }, 1000);
+      }
     }
   })();
 
@@ -1303,6 +1334,69 @@
       }catch(e){alert('Bookmarklet error: '+e.message);}
     })()`;
     document.getElementById('bookmarkletLink').href = 'javascript:' + encodeURIComponent(code);
+  })();
+
+  // ─── Slack "Open All ARAs" bookmarklet ───
+  (function() {
+    var slackCode = `(function(){
+      try{
+        var now=Date.now();
+        var fiveMin=5*60*1000;
+        var enricherUrls=[];
+        var prestoUrls=[];
+
+        /* Find all Slack message containers with timestamps */
+        var msgs=document.querySelectorAll('[data-ts],[data-item-key]');
+        /* Also try generic message selectors */
+        if(msgs.length===0){msgs=document.querySelectorAll('.c-message_kit__gutter,.c-message_kit__message');}
+
+        msgs.forEach(function(msg){
+          /* Extract Slack message timestamp */
+          var ts=msg.getAttribute('data-ts');
+          if(!ts){
+            /* Try finding a time element inside */
+            var timeEl=msg.querySelector('time[datetime],a[data-ts],span[data-ts]');
+            if(timeEl){ts=timeEl.getAttribute('data-ts')||timeEl.getAttribute('datetime');}
+          }
+
+          /* Check if message is within the last 5 minutes */
+          var msgTime=0;
+          if(ts){
+            /* Slack timestamps are Unix epoch in seconds (with decimal) */
+            if(/^\\d+\\.?\\d*$/.test(ts)){msgTime=parseFloat(ts)*1000;}
+            else{msgTime=new Date(ts).getTime();}
+          }
+
+          /* If we can parse the time, filter to last 5 min; if not, include anyway */
+          if(msgTime>0&&(now-msgTime)>fiveMin)return;
+
+          /* Scan all links in this message */
+          var links=msg.querySelectorAll('a[href]');
+          links.forEach(function(a){
+            var href=a.href||a.getAttribute('href')||'';
+            if(href.indexOf('rumors-enricher')>=0&&enricherUrls.indexOf(href)<0){enricherUrls.push(href);}
+            if(href.indexOf('presto-suite.gannettdigital.com/copy')>=0&&prestoUrls.indexOf(href)<0){prestoUrls.push(href);}
+          });
+        });
+
+        /* Also scan links outside message containers (e.g. in thread panels) */
+        if(enricherUrls.length===0&&prestoUrls.length===0){
+          var allLinks=document.querySelectorAll('a[href]');
+          allLinks.forEach(function(a){
+            var href=a.href||a.getAttribute('href')||'';
+            if(href.indexOf('rumors-enricher')>=0&&enricherUrls.indexOf(href)<0){enricherUrls.push(href);}
+            if(href.indexOf('presto-suite.gannettdigital.com/copy')>=0&&prestoUrls.indexOf(href)<0){prestoUrls.push(href);}
+          });
+        }
+
+        /* Open all found URLs */
+        enricherUrls.forEach(function(u){window.open(u,'_blank');});
+        prestoUrls.forEach(function(u){window.open(u,'_blank');});
+
+        alert('Opening '+enricherUrls.length+' Enricher tabs and '+prestoUrls.length+' Presto tabs');
+      }catch(e){alert('Bookmarklet error: '+e.message);}
+    })()`;
+    document.getElementById('slackBookmarkletLink').href = 'javascript:' + encodeURIComponent(slackCode);
   })();
 </script>
 
