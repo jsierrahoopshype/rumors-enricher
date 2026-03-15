@@ -172,7 +172,11 @@ function parseRumors(html) {
 
   while ((articleMatch = articlePattern.exec(html)) !== null) {
     const articleHtml = articleMatch[1];
-    processArticleBlock(articleHtml, rumors);
+    const fullArticleHtml = articleMatch[0];
+    const articleEnd = articleMatch.index + fullArticleHtml.length;
+    // Include content after </article> (tags may be outside the article element)
+    const extendedHtml = fullArticleHtml + html.substring(articleEnd, Math.min(html.length, articleEnd + 2000));
+    processArticleBlock(articleHtml, extendedHtml, rumors);
   }
 
   // Fallback: h2 + link combinations
@@ -216,7 +220,7 @@ function parseRumors(html) {
   return rumors;
 }
 
-function processArticleBlock(html, rumors) {
+function processArticleBlock(html, extendedHtml, rumors) {
   // Check if this block has an h2 headline (proper rumor vs raw tweet embed)
   const h2Match = html.match(/<h2[^>]*>([\s\S]*?)<\/h2>/i);
   if (!h2Match) return; // No headline — skip raw tweet embeds
@@ -232,9 +236,15 @@ function processArticleBlock(html, rumors) {
   const assetId = extractAssetId(url);
   if (!assetId) return;
 
-  // Step 1: Try extracting players from rel="tag" links in the article
-  const tags = extractTagsFromArticle(html);
+  // Step 1: Try extracting players from tags inside the article
+  let tags = extractTagsFromArticle(html);
   let players = extractPlayersFromTags(tags);
+
+  // Step 1b: If no players found in article, try extended HTML (tags after </article>)
+  if (players.length === 0 && extendedHtml) {
+    tags = extractTagsFromArticle(extendedHtml);
+    players = extractPlayersFromTags(tags);
+  }
 
   // Step 2: Fallback — extract known player names from the headline
   if (players.length === 0) {
@@ -255,11 +265,26 @@ function extractTagsFromArticle(html) {
   const tags = [];
 
   // Look for rel="tag" links: <a href="..." rel="tag">Tag Name</a>
-  const relTagPattern = /<a[^>]*rel="tag"[^>]*>([\s\S]*?)<\/a>/gi;
+  // Also match rel='tag', rel="tag noopener", etc.
+  const relTagPattern = /<a[^>]*\brel=["'][^"']*\btag\b[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi;
   let match;
   while ((match = relTagPattern.exec(html)) !== null) {
     const tag = stripTags(match[1]).trim();
     if (tag) tags.push(tag);
+  }
+
+  // Also try class-based tag links: <a class="tag-link" ...>
+  const classTagPattern = /<a[^>]*\bclass=["'][^"']*\btag[^"']*["'][^>]*>([\s\S]*?)<\/a>/gi;
+  while ((match = classTagPattern.exec(html)) !== null) {
+    const tag = stripTags(match[1]).trim();
+    if (tag && tags.indexOf(tag) === -1) tags.push(tag);
+  }
+
+  // Also try href-based tag links: <a href="/tag/player-name">
+  const hrefTagPattern = /<a[^>]*href=["'][^"']*\/tag\/([^"'\/]+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  while ((match = hrefTagPattern.exec(html)) !== null) {
+    const tag = stripTags(match[2]).trim();
+    if (tag && tags.indexOf(tag) === -1) tags.push(tag);
   }
 
   // Look for tags in common tag container patterns
