@@ -524,7 +524,7 @@
   <div class="bookmarklet-section">
     <h2>Slack Helper Bookmarklet</h2>
     <p style="font-size:0.85rem; color:var(--light-gray); margin-bottom:12px;">
-      Drag this link to your bookmarks bar. Click it while on a Slack page to open all Enricher and Presto Copy links from the last 5 minutes.
+      Drag this link to your bookmarks bar. Click it while on a Slack page to open all Enricher and Presto Copy links from the last 10 minutes.
     </p>
     <a class="bookmarklet-link" id="slackBookmarkletLink" href="#">Open All ARAs (Slack)</a>
     <div class="bookmarklet-instructions">
@@ -535,7 +535,7 @@
         <li>Navigate to a Slack channel with Enricher notifications</li>
         <li>Click the bookmarklet &mdash; it will:
           <ul style="list-style:disc; padding-left:18px; margin-top:4px;">
-            <li>Scan visible Slack messages from the last 5 minutes</li>
+            <li>Scan visible Slack messages from the last 10 minutes</li>
             <li>Find all <strong>Enricher</strong> links (<code>rumors-enricher</code>) and <strong>Presto Copy</strong> links (<code>presto-suite.gannettdigital.com/copy</code>)</li>
             <li>Open each link in a new tab</li>
           </ul>
@@ -1340,35 +1340,67 @@
   (function() {
     var slackCode = `(function(){
       try{
-        var now=Date.now();
-        var fiveMin=5*60*1000;
+        var nowSec=Date.now()/1000;
+        var tenMin=600;
         var enricherUrls=[];
         var prestoUrls=[];
 
-        /* Find all Slack message containers with timestamps */
+        /* Helper: parse visible time text like "2:15 PM" and check if within 10 min */
+        function parseVisibleTime(text){
+          var m=text.match(/(\\d{1,2}):(\\d{2})\\s*(AM|PM|am|pm)/);
+          if(!m)return 0;
+          var h=parseInt(m[1],10);
+          var min=parseInt(m[2],10);
+          var ampm=m[3].toUpperCase();
+          if(ampm==='PM'&&h!==12)h+=12;
+          if(ampm==='AM'&&h===12)h=0;
+          var d=new Date();
+          d.setHours(h,min,0,0);
+          return d.getTime()/1000;
+        }
+
+        /* Helper: check if a message is within the last 10 minutes */
+        function isRecent(msg){
+          /* Strategy 1: data-ts on the message element itself */
+          var ts=msg.getAttribute('data-ts');
+
+          /* Strategy 2: data-ts on child elements (time links, etc) */
+          if(!ts){
+            var tsEl=msg.querySelector('[data-ts]');
+            if(tsEl)ts=tsEl.getAttribute('data-ts');
+          }
+
+          /* If we have a numeric Slack timestamp, compare directly */
+          if(ts&&/^\\d+\\.?\\d*$/.test(ts)){
+            return (nowSec-parseFloat(ts))<=tenMin;
+          }
+
+          /* Strategy 3: datetime attribute on <time> elements */
+          if(!ts){
+            var timeEl=msg.querySelector('time[datetime]');
+            if(timeEl){
+              var dt=new Date(timeEl.getAttribute('datetime')).getTime()/1000;
+              if(dt>0)return (nowSec-dt)<=tenMin;
+            }
+          }
+
+          /* Strategy 4: visible time text (e.g. "2:15 PM") */
+          var timeLink=msg.querySelector('.c-timestamp__label,[data-stringify-type="timestamp"],.c-link--secondary');
+          if(timeLink){
+            var vt=parseVisibleTime(timeLink.textContent.trim());
+            if(vt>0)return (nowSec-vt)<=tenMin;
+          }
+
+          /* No timestamp found — skip this message */
+          return false;
+        }
+
+        /* Find all Slack message containers */
         var msgs=document.querySelectorAll('[data-ts],[data-item-key]');
-        /* Also try generic message selectors */
         if(msgs.length===0){msgs=document.querySelectorAll('.c-message_kit__gutter,.c-message_kit__message');}
 
         msgs.forEach(function(msg){
-          /* Extract Slack message timestamp */
-          var ts=msg.getAttribute('data-ts');
-          if(!ts){
-            /* Try finding a time element inside */
-            var timeEl=msg.querySelector('time[datetime],a[data-ts],span[data-ts]');
-            if(timeEl){ts=timeEl.getAttribute('data-ts')||timeEl.getAttribute('datetime');}
-          }
-
-          /* Check if message is within the last 5 minutes */
-          var msgTime=0;
-          if(ts){
-            /* Slack timestamps are Unix epoch in seconds (with decimal) */
-            if(/^\\d+\\.?\\d*$/.test(ts)){msgTime=parseFloat(ts)*1000;}
-            else{msgTime=new Date(ts).getTime();}
-          }
-
-          /* If we can parse the time, filter to last 5 min; if not, include anyway */
-          if(msgTime>0&&(now-msgTime)>fiveMin)return;
+          if(!isRecent(msg))return;
 
           /* Scan all links in this message */
           var links=msg.querySelectorAll('a[href]');
@@ -1378,16 +1410,6 @@
             if(href.indexOf('presto-suite.gannettdigital.com/copy')>=0&&prestoUrls.indexOf(href)<0){prestoUrls.push(href);}
           });
         });
-
-        /* Also scan links outside message containers (e.g. in thread panels) */
-        if(enricherUrls.length===0&&prestoUrls.length===0){
-          var allLinks=document.querySelectorAll('a[href]');
-          allLinks.forEach(function(a){
-            var href=a.href||a.getAttribute('href')||'';
-            if(href.indexOf('rumors-enricher')>=0&&enricherUrls.indexOf(href)<0){enricherUrls.push(href);}
-            if(href.indexOf('presto-suite.gannettdigital.com/copy')>=0&&prestoUrls.indexOf(href)<0){prestoUrls.push(href);}
-          });
-        }
 
         /* Open all found URLs */
         enricherUrls.forEach(function(u){window.open(u,'_blank');});
