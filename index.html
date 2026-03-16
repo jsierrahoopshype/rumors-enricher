@@ -244,30 +244,16 @@
   }
 
   .bsky-entry {
-    padding: 10px 0;
-    border-bottom: 1px solid #2a2a4a;
+    padding: 10px 14px;
+    margin: 10px 0;
+    border-left: 4px solid #F7941D;
+    background: rgba(247, 148, 29, 0.05);
     font-size: 0.88rem;
   }
 
   .bsky-entry:last-child { border-bottom: none; }
 
-  .bsky-author {
-    color: var(--orange);
-    font-weight: 600;
-    font-size: 0.85rem;
-  }
-
-  .bsky-handle {
-    color: var(--mid-gray);
-    font-size: 0.8rem;
-    text-decoration: none;
-  }
-  .bsky-handle:hover {
-    text-decoration: underline;
-  }
-
   .bsky-text {
-    margin: 4px 0;
     color: var(--light-gray);
     line-height: 1.5;
   }
@@ -645,26 +631,63 @@
     document.getElementById('previewSection').style.display = 'none';
     document.getElementById('titleSection').style.display = 'none';
 
-    const [rumorsResult, blueskyResult] = await Promise.allSettled([
-      fetchRumorsArchive(state.playerName, state.headline),
-      fetchBlueskyMentions(state.playerName)
+    // Support comma-separated player names
+    const playerNames = state.playerName.split(',').map(p => p.trim()).filter(Boolean);
+
+    // Fetch rumors for all players in parallel
+    const rumorsPromises = playerNames.map(name => fetchRumorsArchive(name, state.headline));
+    // Fetch Bluesky mentions for all players in parallel
+    const blueskyPromises = playerNames.map(name => fetchBlueskyMentions(name));
+
+    const [rumorsResults, blueskyResults] = await Promise.all([
+      Promise.allSettled(rumorsPromises),
+      Promise.allSettled(blueskyPromises)
     ]);
 
     showStatus(false);
 
-    if (rumorsResult.status === 'fulfilled') {
-      state.rumors = rumorsResult.value;
-    } else {
-      state.rumors = [];
-      showError('Rumors archive: ' + rumorsResult.reason);
+    // Combine and deduplicate rumors from all players
+    let allRumors = [];
+    rumorsResults.forEach(r => {
+      if (r.status === 'fulfilled') allRumors = allRumors.concat(r.value);
+      else showError('Rumors archive: ' + r.reason);
+    });
+    const seenRumorKeys = new Set();
+    state.rumors = allRumors.filter(r => {
+      const key = (r.text || r.headline || '').substring(0, 80).toLowerCase().trim();
+      if (!key || seenRumorKeys.has(key)) return false;
+      seenRumorKeys.add(key);
+      return true;
+    });
+    // Sort combined rumors by date descending
+    function parseRumorDateSort(d) {
+      if (!d) return 0;
+      var cleaned = d.replace(/\s+[A-Z]{2,5}$/, '');
+      var t = new Date(cleaned).getTime();
+      return isNaN(t) ? 0 : t;
     }
+    state.rumors.sort((a, b) => parseRumorDateSort(b.date || b.archive_date) - parseRumorDateSort(a.date || a.archive_date));
+    state.rumors = state.rumors.slice(0, 15);
 
-    if (blueskyResult.status === 'fulfilled') {
-      state.blueskyMentions = blueskyResult.value;
-    } else {
-      state.blueskyMentions = [];
-      showError('Bluesky mentions: ' + blueskyResult.reason);
-    }
+    // Combine and deduplicate Bluesky mentions from all players
+    let allBsky = [];
+    blueskyResults.forEach(r => {
+      if (r.status === 'fulfilled') allBsky = allBsky.concat(r.value);
+      else showError('Bluesky mentions: ' + r.reason);
+    });
+    const seenBskyKeys = new Set();
+    state.blueskyMentions = allBsky.filter(m => {
+      const key = (m.text || '').substring(0, 80).toLowerCase().trim();
+      if (!key || seenBskyKeys.has(key)) return false;
+      seenBskyKeys.add(key);
+      return true;
+    });
+    // Sort Bluesky by date descending
+    state.blueskyMentions.sort((a, b) => {
+      const ta = new Date(a.created_at || 0).getTime();
+      const tb = new Date(b.created_at || 0).getTime();
+      return tb - ta;
+    });
 
     renderResults();
   }
@@ -760,7 +783,8 @@
 
     // Rumors — deduplicate against Bluesky URLs
     const rumorsDiv = document.getElementById('rumorsResults');
-    document.getElementById('rumorsHeading').textContent = 'More on ' + state.playerName + ' — Recent HoopsHype Rumors';
+    const displayNames = state.playerName.split(',').map(p => p.trim()).filter(Boolean).join(' & ');
+    document.getElementById('rumorsHeading').textContent = 'More on ' + displayNames + ' — Recent HoopsHype Rumors';
 
     const bskyUrls = new Set(state.blueskyMentions.map(m => m.web_url).filter(Boolean));
     const filteredRumors = state.rumors.filter(r => {
@@ -830,14 +854,14 @@
       bskyBlock.style.display = '';
       bskyDiv.innerHTML = filteredBsky.map(m => {
         const author = escapeHtml(m.author_name || m.author_handle || 'Unknown');
-        const handle = escapeHtml(m.author_handle || '');
         const rawText = m.text || '';
-        const time = m.created_at ? new Date(m.created_at).toLocaleString() : '';
+        const date = m.created_at ? formatBskyDate(m.created_at) : '';
         const url = m.web_url || '#';
+        let tail = '';
+        if (date) tail += ' \u2014 ' + escapeHtml(date);
+        tail += ' <a href="' + escapeHtml(url) + '" target="_blank" rel="noopener" class="rumor-source-link">' + author + '</a>';
         return `<div class="bsky-entry">
-          <div><span class="bsky-author">${author}</span> <a class="bsky-handle" href="https://bsky.app/profile/${handle}" target="_blank" rel="noopener">@${handle}</a></div>
-          <div class="bsky-text">${linkifyText(rawText)}</div>
-          <div class="bsky-meta">${time} · <a href="${escapeHtml(url)}" target="_blank" rel="noopener">View post</a></div>
+          <div class="bsky-text">${linkifyText(rawText)}${tail}</div>
         </div>`;
       }).join('');
     }
@@ -851,7 +875,7 @@
 
   // ─── Title suggestions ───
   function renderTitles() {
-    const name = state.playerName;
+    const name = state.playerName.split(',').map(p => p.trim()).filter(Boolean).join(' & ');
     const monthYear = new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' });
     const titles = [
       name + ' Rumors: Latest News & Updates',
@@ -900,24 +924,26 @@
     });
     if (outputBsky.length > 0) {
       html += '<h3>What NBA media is saying</h3>\n';
-      html += '<ul>\n';
       outputBsky.forEach(m => {
         const author = escapeHtml(m.author_name || m.author_handle || 'Unknown');
-        const handle = escapeHtml(m.author_handle || '');
         const rawText = m.text || '';
-        const time = m.created_at ? new Date(m.created_at).toLocaleString() : '';
+        const date = m.created_at ? formatBskyDate(m.created_at) : '';
         const url = m.web_url || '';
-        let li = '<li><strong>' + author + '</strong> (<a href="https://bsky.app/profile/' + handle + '">@' + handle + '</a>): ' + linkifyText(rawText);
-        if (time) li += ' — <em>' + time + '</em>';
-        if (url) li += ' <a href="' + escapeHtml(url) + '">View post</a>';
-        li += '</li>\n';
-        html += li;
+        html += '<blockquote style="border-left:4px solid #F7941D;padding:8px 12px;margin:10px 0;background:rgba(247,148,29,0.05)">\n';
+        let body = linkifyText(rawText);
+        if (date) body += ' \u2014 ' + escapeHtml(date);
+        if (url) {
+          body += ' <a href="' + escapeHtml(url) + '">' + author + '</a>';
+        } else {
+          body += ' ' + author;
+        }
+        html += body + '\n</blockquote>\n';
       });
-      html += '</ul>\n';
     }
 
     // Section 2: Rumors — deduplicate against Bluesky URLs
-    html += '<h3>More on ' + escapeHtml(state.playerName) + ' — Recent HoopsHype Rumors</h3>\n';
+    const outputDisplayNames = state.playerName.split(',').map(p => p.trim()).filter(Boolean).join(' & ');
+    html += '<h3>More on ' + escapeHtml(outputDisplayNames) + ' — Recent HoopsHype Rumors</h3>\n';
     const outputBskyUrls = new Set(outputBsky.map(m => m.web_url).filter(Boolean));
     const outputRumors = state.rumors.filter(r => {
       const url = r.source_url || r.url || '';
@@ -1010,7 +1036,18 @@
   async function refreshBluesky() {
     showStatus(true, 'Refreshing Bluesky mentions...');
     try {
-      state.blueskyMentions = await fetchBlueskyMentions(state.playerName);
+      const playerNames = state.playerName.split(',').map(p => p.trim()).filter(Boolean);
+      const results = await Promise.allSettled(playerNames.map(n => fetchBlueskyMentions(n)));
+      let allBsky = [];
+      results.forEach(r => { if (r.status === 'fulfilled') allBsky = allBsky.concat(r.value); });
+      const seenKeys = new Set();
+      state.blueskyMentions = allBsky.filter(m => {
+        const key = (m.text || '').substring(0, 80).toLowerCase().trim();
+        if (!key || seenKeys.has(key)) return false;
+        seenKeys.add(key);
+        return true;
+      });
+      state.blueskyMentions.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
     } catch (e) {
       showError('Bluesky refresh failed: ' + e.message);
     }
@@ -1038,6 +1075,13 @@
       }
     }
     return t.trim();
+  }
+
+  function formatBskyDate(raw) {
+    if (!raw) return '';
+    var dt = new Date(raw);
+    if (isNaN(dt.getTime())) return raw;
+    return (dt.getMonth() + 1) + '/' + dt.getDate() + '/' + dt.getFullYear();
   }
 
   function formatRumorDate(raw) {
