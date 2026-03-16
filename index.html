@@ -926,18 +926,15 @@
       html += '<h3>What NBA media is saying</h3>\n';
       outputBsky.forEach(m => {
         const author = escapeHtml(m.author_name || m.author_handle || 'Unknown');
+        const handle = escapeHtml(m.author_handle || '');
         const rawText = m.text || '';
-        const date = m.created_at ? formatBskyDate(m.created_at) : '';
+        const time = m.created_at ? new Date(m.created_at).toLocaleString() : '';
         const url = m.web_url || '';
-        html += '<blockquote style="border-left:4px solid #F7941D;padding:8px 12px;margin:10px 0;background:rgba(247,148,29,0.05)">\n';
-        let body = linkifyText(rawText);
-        if (date) body += ' \u2014 ' + escapeHtml(date);
-        if (url) {
-          body += ' <a href="' + escapeHtml(url) + '">' + author + '</a>';
-        } else {
-          body += ' ' + author;
-        }
-        html += body + '\n</blockquote>\n';
+        let p = '<p><strong>' + author + '</strong> (<a href="https://bsky.app/profile/' + handle + '">@' + handle + '</a>): ' + linkifyText(rawText);
+        if (time) p += ' \u2014 ' + escapeHtml(time);
+        if (url) p += ' <a href="' + escapeHtml(url) + '">View post</a>';
+        p += '</p>\n';
+        html += p;
       });
     }
 
