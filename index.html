@@ -944,10 +944,11 @@
         const rawText = m.text || '';
         const time = m.created_at ? new Date(m.created_at).toLocaleString() : '';
         const url = m.web_url || '';
-        let p = '<p><strong>' + author + '</strong> (<a href="https://bsky.app/profile/' + handle + '">@' + handle + '</a>): ' + linkifyText(rawText);
+        let p = '<blockquote style="border-left: 4px solid #F7941D; padding: 8px 12px; margin: 8px 0;">\n';
+        p += '<p><strong>' + author + '</strong> (<a href="https://bsky.app/profile/' + handle + '">@' + handle + '</a>): ' + linkifyText(rawText);
         if (time) p += ' \u2014 ' + escapeHtml(time);
         if (url) p += ' <a href="' + escapeHtml(url) + '">View post</a>';
-        p += '</p>\n';
+        p += '</p>\n</blockquote>\n';
         html += p;
       });
     }
