@@ -238,12 +238,12 @@ function processArticleBlock(html, extendedHtml, rumors) {
 
   // Step 1: Try extracting players from tags inside the article
   let tags = extractTagsFromArticle(html);
-  let players = extractPlayersFromTags(tags);
+  let players = extractPlayersFromTags(tags, headline);
 
   // Step 1b: If no players found in article, try extended HTML (tags after </article>)
   if (players.length === 0 && extendedHtml) {
     tags = extractTagsFromArticle(extendedHtml);
-    players = extractPlayersFromTags(tags);
+    players = extractPlayersFromTags(tags, headline);
   }
 
   // Step 2: Fallback — extract known player names from the headline
@@ -319,12 +319,15 @@ function extractTagsFromArticle(html) {
  * Filter tags to find valid player names.
  * A valid player tag: 2+ words, not a team name, not a generic tag.
  */
-function extractPlayersFromTags(tags) {
+function extractPlayersFromTags(tags, headline) {
   const players = [];
   const seen = new Set();
+  const headlineLower = (headline || '').toLowerCase();
 
   for (const tag of tags) {
-    const trimmed = tag.trim();
+    let trimmed = tag.trim();
+    // Strip possessive "'s" suffix (e.g. "Luke Kornet's" → "Luke Kornet")
+    trimmed = trimmed.replace(/[''\u2019]s$/i, '');
     const lower = trimmed.toLowerCase();
     const wordCount = trimmed.split(/\s+/).length;
 
@@ -332,6 +335,8 @@ function extractPlayersFromTags(tags) {
     if (NBA_TEAMS.has(lower)) continue;
     if (GENERIC_TAGS.has(lower)) continue;
     if (seen.has(lower)) continue;
+    // If headline is available, verify the base name appears in it
+    if (headlineLower && !headlineLower.includes(lower)) continue;
     seen.add(lower);
 
     players.push(trimmed);

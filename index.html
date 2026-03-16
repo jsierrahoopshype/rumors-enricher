@@ -480,13 +480,13 @@
 
   <!-- Results -->
   <div class="results-section" id="resultsSection">
-    <div class="result-block" id="blueskyBlock">
-      <h2>What NBA media is saying</h2>
-      <div id="blueskyResults"></div>
-    </div>
     <div class="result-block">
       <h2 id="rumorsHeading">Recent HoopsHype Rumors</h2>
       <div id="rumorsResults"></div>
+    </div>
+    <div class="result-block" id="blueskyBlock">
+      <h2>What NBA media is saying</h2>
+      <div id="blueskyResults"></div>
     </div>
   </div>
 
@@ -500,7 +500,7 @@
   <div class="bookmarklet-section">
     <h2>Presto Helper Bookmarklet</h2>
     <p style="font-size:0.85rem; color:var(--light-gray); margin-bottom:12px;">
-      Drag this link to your bookmarks bar. Click it on any Presto story editor page to auto-fill the Slug and Classification fields.
+      Drag this link to your bookmarks bar. Click it on any Presto story editor page to auto-fill the Slug field.
     </p>
     <a class="bookmarklet-link" id="bookmarkletLink" href="#">Presto Auto-Fill</a>
     <div class="bookmarklet-instructions">
@@ -513,7 +513,6 @@
           <ul style="list-style:disc; padding-left:18px; margin-top:4px;">
             <li>Read the Main Headline field and convert it to a lowercase-hyphenated slug</li>
             <li>Fill the <strong>Slug</strong> input field with that slug</li>
-            <li>Set the <strong>Classification</strong> dropdown to <code>sports/nba</code></li>
           </ul>
         </li>
       </ol>
@@ -798,7 +797,7 @@
     // Rumors — deduplicate against Bluesky URLs
     const rumorsDiv = document.getElementById('rumorsResults');
     const displayNames = state.playerName.split(',').map(p => p.trim()).filter(Boolean).join(' & ');
-    document.getElementById('rumorsHeading').textContent = 'More on ' + displayNames + ' — Recent HoopsHype Rumors';
+    document.getElementById('rumorsHeading').innerHTML = 'More on ' + escapeHtml(displayNames) + ': <a href="https://www.hoopshype.com/rumors/" target="_blank" rel="noopener">Recent HoopsHype Rumors</a>';
 
     const bskyUrls = new Set(state.blueskyMentions.map(m => m.web_url).filter(Boolean));
     const filteredRumors = state.rumors.filter(r => {
@@ -926,7 +925,7 @@
   function buildOutputHTML() {
     let html = '';
 
-    // Section 1: Bluesky — dedup against all loaded rumors (by URL or first 80 chars)
+    // Compute dedup sets
     const outRumorUrls = new Set(state.rumors.map(r => r.source_url || r.url || '').filter(Boolean));
     const outRumorPrefixes = new Set(state.rumors.map(r => (r.text || r.headline || '').substring(0, 80).toLowerCase().trim()).filter(Boolean));
     const outputBsky = state.blueskyMentions.filter(m => {
@@ -936,43 +935,25 @@
       if (bPrefix && outRumorPrefixes.has(bPrefix)) return false;
       return true;
     });
-    if (outputBsky.length > 0) {
-      html += '<h3>What NBA media is saying</h3>\n';
-      outputBsky.forEach(m => {
-        const author = escapeHtml(m.author_name || m.author_handle || 'Unknown');
-        const handle = escapeHtml(m.author_handle || '');
-        const rawText = m.text || '';
-        const time = m.created_at ? new Date(m.created_at).toLocaleString() : '';
-        const url = m.web_url || '';
-        let p = '<blockquote style="border-left: 4px solid #F7941D; padding: 8px 12px; margin: 8px 0;">\n';
-        p += '<p><strong>' + author + '</strong> (<a href="https://bsky.app/profile/' + handle + '">@' + handle + '</a>): ' + linkifyText(rawText);
-        if (time) p += ' \u2014 ' + escapeHtml(time);
-        if (url) p += ' <a href="' + escapeHtml(url) + '">View post</a>';
-        p += '</p>\n</blockquote>\n';
-        html += p;
-      });
-    }
-
-    // Section 2: Rumors — deduplicate against Bluesky URLs
-    const outputDisplayNames = state.playerName.split(',').map(p => p.trim()).filter(Boolean).join(' & ');
-    html += '<h3>More on ' + escapeHtml(outputDisplayNames) + ' — Recent HoopsHype Rumors</h3>\n';
     const outputBskyUrls = new Set(outputBsky.map(m => m.web_url).filter(Boolean));
     const outputRumors = state.rumors.filter(r => {
       const url = r.source_url || r.url || '';
       return !url || !outputBskyUrls.has(url);
     });
+
+    // Section 1: Rumors (single blockquote wrapper to prevent Presto ad injection)
+    const outputDisplayNames = state.playerName.split(',').map(p => p.trim()).filter(Boolean).join(' & ');
+    html += '<h3>More on ' + escapeHtml(outputDisplayNames) + ': <a href="https://www.hoopshype.com/rumors/">Recent HoopsHype Rumors</a></h3>\n';
     if (outputRumors.length > 0) {
+      html += '<blockquote style="border-left:4px solid #F7941D;padding:8px 12px;margin:10px 0;background:rgba(247,148,29,0.05)">\n';
+      const rumorEntries = [];
       outputRumors.forEach(r => {
-        // Step 1: Clean body text — strip outlet from end
         const rawText = r.text || r.headline || '';
         const outlet = r.outlet || r.source || '';
         const sourceUrl = r.source_url || r.url || '';
         const quote = r.quote || '';
         const cleanText = stripOutlet(rawText, outlet);
-        // Step 2: Format date from archive_date
         const date = formatRumorDate(r.archive_date || r.date || '');
-        // Step 3: Build HTML
-        html += '<blockquote style="border-left:4px solid #F7941D;padding:8px 12px;margin:10px 0;background:rgba(247,148,29,0.05)">\n';
         let body = escapeHtml(cleanText);
         if (quote && sourceUrl && cleanText.includes(quote)) {
           const escapedQuote = escapeHtml(quote);
@@ -987,18 +968,38 @@
               after;
           }
         }
-        // Tail: " — M/D/YYYY outlet(linked)"
         body += ' \u2014 ' + escapeHtml(date);
         if (outlet && sourceUrl) {
           body += ' <a href="' + escapeHtml(sourceUrl) + '">' + escapeHtml(outlet) + '</a>';
         } else if (outlet) {
           body += ' ' + escapeHtml(outlet);
         }
-        html += body;
-        html += '\n</blockquote>\n';
+        rumorEntries.push(body);
       });
+      html += rumorEntries.join('<br><br>\n');
+      html += '\n</blockquote>\n';
     } else {
       html += '<p><em>No matching rumors found.</em></p>\n';
+    }
+
+    // Section 2: Bluesky (single blockquote wrapper to prevent Presto ad injection)
+    if (outputBsky.length > 0) {
+      html += '<h3>What NBA media is saying</h3>\n';
+      html += '<blockquote style="border-left:4px solid #F7941D;padding:8px 12px;margin:8px 0">\n';
+      const bskyEntries = [];
+      outputBsky.forEach(m => {
+        const author = escapeHtml(m.author_name || m.author_handle || 'Unknown');
+        const handle = escapeHtml(m.author_handle || '');
+        const rawText = m.text || '';
+        const time = m.created_at ? new Date(m.created_at).toLocaleString() : '';
+        const url = m.web_url || '';
+        let entry = '<strong>' + author + '</strong> (<a href="https://bsky.app/profile/' + handle + '">@' + handle + '</a>): ' + linkifyText(rawText);
+        if (time) entry += ' \u2014 ' + escapeHtml(time);
+        if (url) entry += ' <a href="' + escapeHtml(url) + '">View post</a>';
+        bskyEntries.push(entry);
+      });
+      html += bskyEntries.join('<br><br>\n');
+      html += '\n</blockquote>\n';
     }
 
     return html;
@@ -1266,127 +1267,8 @@
         /* 3. Set slug with React-compatible event */
         reactSet(slugField,slug);
 
-        /* 4. Find Classification combobox input */
-        var clsField=null;
-        console.log('[Presto Auto-Fill] Scanning for Classification combobox...');
-
-        /* Helper: check if a combobox is the Site field (contains HoopsHype token) */
-        function isSiteField(input){
-          var tokenContainer=input.closest('[class*="form-token-field"],[class*="token-field"]');
-          if(tokenContainer){
-            var tokenText=tokenContainer.textContent.toLowerCase();
-            if(tokenText.indexOf('hoopshype')>=0||tokenText.indexOf('hoops hype')>=0)return true;
-          }
-          if((input.value||'').toLowerCase().indexOf('hoopshype')>=0)return true;
-          if((input.value||'').toLowerCase().indexOf('hoops hype')>=0)return true;
-          return false;
-        }
-
-        /* Strategy A: Find the "Classification" label, then get its associated combobox */
-        var allLabels=document.querySelectorAll('label,span,div,h3,h4');
-        for(var ci=0;ci<allLabels.length;ci++){
-          var cLabelText=allLabels[ci].textContent.trim();
-          if(cLabelText==='Classification'){
-            console.log('[Presto Auto-Fill] Found "Classification" label:',allLabels[ci]);
-            /* Check for "for" attribute */
-            var cForId=allLabels[ci].getAttribute('for');
-            if(cForId){clsField=document.getElementById(cForId);}
-            /* Traverse up to field wrapper and find combobox */
-            if(!clsField){
-              var cWrap=allLabels[ci].closest('[class*="field"],[class*="form-group"],[class*="sidebar"]');
-              for(var cUp=allLabels[ci].parentElement;cUp&&!cWrap&&cUp!==document.body;cUp=cUp.parentElement){cWrap=cUp;}
-              if(cWrap){clsField=cWrap.querySelector('input[role="combobox"]')||cWrap.querySelector('input');}
-            }
-            if(clsField&&!isSiteField(clsField)){
-              console.log('[Presto Auto-Fill] Classification field found via label:',clsField.id);
-              break;
-            }
-            clsField=null; /* Reset if it was the Site field */
-          }
-        }
-
-        /* Strategy B: Find all token-input comboboxes, skip the Site field, pick the next one */
-        if(!clsField){
-          var allComboboxes=document.querySelectorAll('input[id*="components-form-token-input-control"]');
-          console.log('[Presto Auto-Fill] Found '+allComboboxes.length+' token-input comboboxes');
-          for(var cb=0;cb<allComboboxes.length;cb++){
-            console.log('[Presto Auto-Fill] Combobox '+cb+': id='+allComboboxes[cb].id+' isSite='+isSiteField(allComboboxes[cb]));
-            if(!isSiteField(allComboboxes[cb])){
-              clsField=allComboboxes[cb];
-              console.log('[Presto Auto-Fill] Classification field found by skipping Site field: id='+clsField.id);
-              break;
-            }
-          }
-        }
-
-        /* Strategy C: Fallback — find by known id suffix */
-        if(!clsField){
-          clsField=document.querySelector('input[id*="components-form-token-input-control-6"]');
-          if(clsField&&isSiteField(clsField))clsField=null;
-          if(clsField)console.log('[Presto Auto-Fill] Classification field found via id-6 pattern:',clsField);
-        }
-
-        if(clsField){
-          /* Helper: type a search term into the combobox using React setter */
-          function clsType(term){
-            clsField.focus();
-            var clsProto=window.HTMLInputElement.prototype;
-            var clsSetter=Object.getOwnPropertyDescriptor(clsProto,'value');
-            if(clsSetter&&clsSetter.set){clsSetter.set.call(clsField,term);}else{clsField.value=term;}
-            clsField.dispatchEvent(new Event('input',{bubbles:true}));
-            console.log('[Presto Auto-Fill] Typed "'+term+'" into Classification');
-          }
-
-          /* Helper: find and click a dropdown option containing target text */
-          function clsPickOption(target){
-            var dropdownOptions=document.querySelectorAll('[role="option"],[role="listbox"] li,[class*="suggestion"],[class*="dropdown"] li,[class*="token-field__suggestion"],[class*="components-form-token-field__suggestion"]');
-            console.log('[Presto Auto-Fill] Found '+dropdownOptions.length+' dropdown options');
-            for(var di=0;di<dropdownOptions.length;di++){
-              var optText=dropdownOptions[di].textContent.trim().toLowerCase();
-              console.log('[Presto Auto-Fill] Dropdown option '+di+': "'+optText+'"');
-              if(optText.indexOf(target)>=0){
-                dropdownOptions[di].click();
-                console.log('[Presto Auto-Fill] Clicked dropdown option: '+optText);
-                return true;
-              }
-            }
-            return false;
-          }
-
-          /* Step 1: Type "nba" and wait 800ms for dropdown */
-          clsType('nba');
-          console.log('[Presto Auto-Fill] Waiting 800ms for dropdown...');
-
-          setTimeout(function(){
-            /* Step 2: Try to pick an option containing "nba" */
-            if(clsPickOption('sports/nba')||clsPickOption('nba')){
-              alert('Presto Auto-Fill Done!\\n\\nSlug: '+slug+'\\nClassification: sports/nba (selected from dropdown)');
-              return;
-            }
-
-            /* Step 3: No match — try typing "sports" instead */
-            console.log('[Presto Auto-Fill] No "nba" option found, trying "sports"...');
-            clsType('sports');
-
-            setTimeout(function(){
-              if(clsPickOption('sports/nba')||clsPickOption('nba')){
-                alert('Presto Auto-Fill Done!\\n\\nSlug: '+slug+'\\nClassification: sports/nba (selected from dropdown)');
-                return;
-              }
-
-              /* Step 4: Last resort — press Enter to submit whatever is typed */
-              console.log('[Presto Auto-Fill] No dropdown match, dispatching Enter key');
-              clsType('sports/nba');
-              clsField.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true}));
-              clsField.dispatchEvent(new KeyboardEvent('keyup',{key:'Enter',code:'Enter',keyCode:13,which:13,bubbles:true}));
-              alert('Presto Auto-Fill Done!\\n\\nSlug: '+slug+'\\nClassification: sports/nba (Enter key fallback)');
-            },800);
-          },800);
-        }else{
-          console.warn('[Presto Auto-Fill] Could not find Classification field. All inputs:',document.querySelectorAll('input'));
-          /* 5. Confirmation alert (no classification) */
-          alert('Presto Auto-Fill Done!\\n\\nSlug: '+slug+'\\nClassification: (field not found)');
-        }
+        /* 4. Confirmation */
+        alert('Presto Auto-Fill Done!\\n\\nSlug: '+slug);
       }catch(e){alert('Bookmarklet error: '+e.message);}
     })()`;
     document.getElementById('bookmarkletLink').href = 'javascript:' + encodeURIComponent(code);
