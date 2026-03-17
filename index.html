@@ -799,11 +799,7 @@
     const displayNames = state.playerName.split(',').map(p => p.trim()).filter(Boolean).join(' & ');
     document.getElementById('rumorsHeading').innerHTML = 'More on ' + escapeHtml(displayNames) + ': <a href="https://www.hoopshype.com/rumors/" target="_blank" rel="noopener">Recent HoopsHype Rumors</a>';
 
-    const bskyUrls = new Set(state.blueskyMentions.map(m => m.web_url).filter(Boolean));
-    const filteredRumors = state.rumors.filter(r => {
-      const url = r.source_url || r.url || '';
-      return !url || !bskyUrls.has(url);
-    });
+    const filteredRumors = state.rumors;
 
     if (filteredRumors.length === 0) {
       rumorsDiv.innerHTML = '<div class="no-results">No matching rumors found in the archive.</div>';
@@ -847,14 +843,10 @@
       }).join('');
     }
 
-    // Bluesky — filter out posts that duplicate any loaded rumor (by URL or first 80 chars of text)
-    const rumorUrls = new Set(state.rumors.map(r => r.source_url || r.url || '').filter(Boolean));
-    const rumorPrefixes = new Set(state.rumors.map(r => (r.text || r.headline || '').substring(0, 80).toLowerCase().trim()).filter(Boolean));
+    // Bluesky — exclude posts with >60% word overlap with the current article headline
     const filteredBsky = state.blueskyMentions.filter(m => {
-      const bUrl = m.web_url || '';
-      if (bUrl && rumorUrls.has(bUrl)) return false;
-      const bPrefix = (m.text || '').substring(0, 80).toLowerCase().trim();
-      if (bPrefix && rumorPrefixes.has(bPrefix)) return false;
+      const bText = m.text || '';
+      if (state.headline && wordOverlap(bText, state.headline) > 0.6) return false;
       return true;
     });
 
@@ -925,21 +917,13 @@
   function buildOutputHTML() {
     let html = '';
 
-    // Compute dedup sets
-    const outRumorUrls = new Set(state.rumors.map(r => r.source_url || r.url || '').filter(Boolean));
-    const outRumorPrefixes = new Set(state.rumors.map(r => (r.text || r.headline || '').substring(0, 80).toLowerCase().trim()).filter(Boolean));
+    // Bluesky — exclude posts with >60% word overlap with the current article headline
     const outputBsky = state.blueskyMentions.filter(m => {
-      const bUrl = m.web_url || '';
-      if (bUrl && outRumorUrls.has(bUrl)) return false;
-      const bPrefix = (m.text || '').substring(0, 80).toLowerCase().trim();
-      if (bPrefix && outRumorPrefixes.has(bPrefix)) return false;
+      const bText = m.text || '';
+      if (state.headline && wordOverlap(bText, state.headline) > 0.6) return false;
       return true;
     });
-    const outputBskyUrls = new Set(outputBsky.map(m => m.web_url).filter(Boolean));
-    const outputRumors = state.rumors.filter(r => {
-      const url = r.source_url || r.url || '';
-      return !url || !outputBskyUrls.has(url);
-    });
+    const outputRumors = state.rumors;
 
     // Section 1: Rumors (single blockquote wrapper to prevent Presto ad injection)
     const outputDisplayNames = state.playerName.split(',').map(p => p.trim()).filter(Boolean).join(' & ');
@@ -1070,6 +1054,15 @@
   }
 
   // ─── Helpers ───
+  function wordOverlap(textA, textB) {
+    var wordsA = (textA || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(Boolean);
+    var wordsB = (textB || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').split(/\s+/).filter(Boolean);
+    if (wordsA.length === 0 || wordsB.length === 0) return 0;
+    var setB = new Set(wordsB);
+    var overlap = wordsA.filter(function(w) { return setB.has(w); }).length;
+    return overlap / Math.min(wordsA.length, wordsB.length);
+  }
+
   function stripOutlet(text, outlet) {
     if (!outlet) return text.trim();
     var t = text.trimEnd();
@@ -1337,26 +1330,32 @@
         var msgs=document.querySelectorAll('[data-ts],[data-item-key]');
         if(msgs.length===0){msgs=document.querySelectorAll('.c-message_kit__gutter,.c-message_kit__message');}
 
+        /* Collect paired URLs per message for true interleaving */
+        var pairs=[];
+        var seenEnrichers={};
+        var seenPrestos={};
         msgs.forEach(function(msg){
           if(!isRecent(msg))return;
-
-          /* Scan all links in this message */
+          var msgEnrichers=[];
+          var msgPrestos=[];
           var links=msg.querySelectorAll('a[href]');
           links.forEach(function(a){
             var href=a.href||a.getAttribute('href')||'';
-            if(href.indexOf('rumors-enricher')>=0&&enricherUrls.indexOf(href)<0){enricherUrls.push(href);}
-            if(href.indexOf('presto-suite.gannettdigital.com/copy')>=0&&prestoUrls.indexOf(href)<0){prestoUrls.push(href);}
+            if(href.indexOf('rumors-enricher')>=0&&!seenEnrichers[href]){seenEnrichers[href]=1;msgEnrichers.push(href);}
+            if(href.indexOf('presto-suite.gannettdigital.com/copy')>=0&&!seenPrestos[href]){seenPrestos[href]=1;msgPrestos.push(href);}
           });
+          var max=Math.max(msgEnrichers.length,msgPrestos.length);
+          for(var k=0;k<max;k++){pairs.push({e:msgEnrichers[k]||null,p:msgPrestos[k]||null});}
         });
 
         /* Open tabs interleaved: Enricher 1, Presto 1, Enricher 2, Presto 2, ... */
-        var max=Math.max(enricherUrls.length,prestoUrls.length);
-        for(var i=0;i<max;i++){
-          if(i<enricherUrls.length)window.open(enricherUrls[i],'_blank');
-          if(i<prestoUrls.length)window.open(prestoUrls[i],'_blank');
+        var eCount=0,pCount=0;
+        for(var i=0;i<pairs.length;i++){
+          if(pairs[i].e){window.open(pairs[i].e,'_blank');eCount++;}
+          if(pairs[i].p){window.open(pairs[i].p,'_blank');pCount++;}
         }
 
-        alert('Opening '+enricherUrls.length+' Enricher tabs and '+prestoUrls.length+' Presto tabs');
+        alert('Opening '+eCount+' Enricher tabs and '+pCount+' Presto tabs');
       }catch(e){alert('Bookmarklet error: '+e.message);}
     })()`;
     document.getElementById('slackBookmarkletLink').href = 'javascript:' + encodeURIComponent(slackCode);
