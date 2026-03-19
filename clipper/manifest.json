@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "HoopsHype Rumor Clipper",
+  "version": "1.0.0",
+  "description": "Silently copies selected text with the page URL to clipboard on mouseup.",
+  "permissions": [
+    "clipboardWrite",
+    "offscreen"
+  ],
+  "icons": {
+    "128": "icon.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  }
+}
