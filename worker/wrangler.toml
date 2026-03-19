@@ -5,9 +5,9 @@ compatibility_date = "2024-01-01"
 [triggers]
 crons = ["* * * * *"]
 
-[[kv_namespaces]]
-binding = "SEEN_RUMORS"
-id = "" # Replace with your KV namespace ID after creating it
-
 # Secrets (set via `wrangler secret put`):
 # SLACK_WEBHOOK_URL
+
+[[kv_namespaces]]
+binding = "SEEN_RUMORS"
+id = "b99f6a24157643eeb5d2a21c6cb932e8"
