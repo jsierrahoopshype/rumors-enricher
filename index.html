@@ -1259,9 +1259,6 @@
 
         /* 3. Set slug with React-compatible event */
         reactSet(slugField,slug);
-
-        /* 4. Confirmation */
-        alert('Presto Auto-Fill Done!\\n\\nSlug: '+slug);
       }catch(e){alert('Bookmarklet error: '+e.message);}
     })()`;
     document.getElementById('bookmarkletLink').href = 'javascript:' + encodeURIComponent(code);
@@ -1332,30 +1329,30 @@
 
         /* Collect paired URLs per message for true interleaving */
         var pairs=[];
-        var seenEnrichers={};
-        var seenPrestos={};
+        var seenUrls={};
         msgs.forEach(function(msg){
           if(!isRecent(msg))return;
-          var msgEnrichers=[];
-          var msgPrestos=[];
+          var eUrl=null,pUrl=null;
           var links=msg.querySelectorAll('a[href]');
           links.forEach(function(a){
             var href=a.href||a.getAttribute('href')||'';
-            if(href.indexOf('rumors-enricher')>=0&&!seenEnrichers[href]){seenEnrichers[href]=1;msgEnrichers.push(href);}
-            if(href.indexOf('presto-suite.gannettdigital.com/copy')>=0&&!seenPrestos[href]){seenPrestos[href]=1;msgPrestos.push(href);}
+            if(!eUrl&&href.indexOf('rumors-enricher')>=0&&!seenUrls[href]){eUrl=href;seenUrls[href]=1;}
+            if(!pUrl&&href.indexOf('presto-suite.gannettdigital.com/copy')>=0&&!seenUrls[href]){pUrl=href;seenUrls[href]=1;}
           });
-          var max=Math.max(msgEnrichers.length,msgPrestos.length);
-          for(var k=0;k<max;k++){pairs.push({e:msgEnrichers[k]||null,p:msgPrestos[k]||null});}
+          if(eUrl||pUrl){pairs.push({e:eUrl,p:pUrl});}
         });
 
-        /* Open tabs interleaved: Enricher 1, Presto 1, Enricher 2, Presto 2, ... */
+        /* Open tabs with setTimeout delays to prevent browser blocking */
+        var delay=0;
         var eCount=0,pCount=0;
         for(var i=0;i<pairs.length;i++){
-          if(pairs[i].e){window.open(pairs[i].e,'_blank');eCount++;}
-          if(pairs[i].p){window.open(pairs[i].p,'_blank');pCount++;}
+          (function(pair){
+            if(pair.e){setTimeout(function(){window.open(pair.e,'_blank');},delay);delay+=100;eCount++;}
+            if(pair.p){setTimeout(function(){window.open(pair.p,'_blank');},delay);delay+=100;pCount++;}
+          })(pairs[i]);
         }
 
-        alert('Opening '+eCount+' Enricher tabs and '+pCount+' Presto tabs');
+        setTimeout(function(){alert('Opened '+eCount+' Enricher tabs and '+pCount+' Presto tabs');},delay);
       }catch(e){alert('Bookmarklet error: '+e.message);}
     })()`;
     document.getElementById('slackBookmarkletLink').href = 'javascript:' + encodeURIComponent(slackCode);

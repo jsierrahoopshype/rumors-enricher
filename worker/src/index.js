@@ -322,13 +322,13 @@ function extractTagsFromArticle(html) {
 function extractPlayersFromTags(tags, headline) {
   const players = [];
   const seen = new Set();
-  const headlineLower = (headline || '').toLowerCase();
+  const headlineLower = normalizeAccents((headline || '').toLowerCase());
 
   for (const tag of tags) {
     let trimmed = tag.trim();
     // Strip possessive "'s" suffix (e.g. "Luke Kornet's" → "Luke Kornet")
     trimmed = trimmed.replace(/[''\u2019]s$/i, '');
-    const lower = trimmed.toLowerCase();
+    const lower = normalizeAccents(trimmed.toLowerCase());
     const wordCount = trimmed.split(/\s+/).length;
 
     if (wordCount < 2) continue;
@@ -358,14 +358,15 @@ function extractPlayersFromHeadline(headline) {
     .replace(/^(Report|Sources|Rumor|NBA|Breaking):\s*/i, '')
     .trim();
 
-  // Try matching each known player name in the headline (case-insensitive)
-  const headlineLower = cleaned.toLowerCase();
+  // Try matching each known player name in the headline (case-insensitive, accent-normalized)
+  const headlineLower = normalizeAccents(cleaned.toLowerCase());
   for (const player of NBA_PLAYERS) {
-    if (headlineLower.includes(player) && !seen.has(player)) {
-      seen.add(player);
+    const normalizedPlayer = normalizeAccents(player);
+    if (headlineLower.includes(normalizedPlayer) && !seen.has(normalizedPlayer)) {
+      seen.add(normalizedPlayer);
       // Capitalize the name properly from the headline
-      const idx = headlineLower.indexOf(player);
-      const originalCase = cleaned.substring(idx, idx + player.length);
+      const idx = headlineLower.indexOf(normalizedPlayer);
+      const originalCase = cleaned.substring(idx, idx + normalizedPlayer.length);
       players.push(originalCase);
     }
   }
@@ -404,6 +405,14 @@ function extractAssetId(url) {
   // Try finding any long number sequence in the URL
   const nums = url.match(/(\d{8,})/);
   return nums ? nums[1] : null;
+}
+
+/**
+ * Normalize accented characters to ASCII equivalents.
+ * e.g. Dončić → Doncic, Müller → Muller
+ */
+function normalizeAccents(str) {
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
 function decodeHtmlEntities(str) {
