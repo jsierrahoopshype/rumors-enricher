@@ -4,8 +4,7 @@
   "version": "1.0.0",
   "description": "Silently copies selected text with the page URL to clipboard on mouseup.",
   "permissions": [
-    "clipboardWrite",
-    "offscreen"
+    "clipboardWrite"
   ],
   "icons": {
     "128": "icon.png"
