@@ -500,7 +500,7 @@
   <div class="bookmarklet-section">
     <h2>Presto Helper Bookmarklet</h2>
     <p style="font-size:0.85rem; color:var(--light-gray); margin-bottom:12px;">
-      Drag this link to your bookmarks bar. Click it on any Presto story editor page to auto-fill the Slug field.
+      Drag this link to your bookmarks bar. Click it on any Presto story editor page to auto-fill the Slug and Canonical URL fields.
     </p>
     <a class="bookmarklet-link" id="bookmarkletLink" href="#">Presto Auto-Fill</a>
     <div class="bookmarklet-instructions">
@@ -513,6 +513,31 @@
           <ul style="list-style:disc; padding-left:18px; margin-top:4px;">
             <li>Read the Main Headline field and convert it to a lowercase-hyphenated slug</li>
             <li>Fill the <strong>Slug</strong> input field with that slug</li>
+            <li>Construct the ARA's canonical URL from the asset ID, URL ending, and today's date</li>
+            <li>Fill the <strong>Canonical URL</strong> field with the constructed URL</li>
+          </ul>
+        </li>
+      </ol>
+    </div>
+  </div>
+
+  <!-- Set Stub Canonical Bookmarklet -->
+  <div class="bookmarklet-section">
+    <h2>Set Stub Canonical Bookmarklet</h2>
+    <p style="font-size:0.85rem; color:var(--light-gray); margin-bottom:12px;">
+      After publishing the ARA, copy its URL, then open the original stub in Presto and click this bookmarklet to set the stub's Canonical URL to the ARA.
+    </p>
+    <a class="bookmarklet-link" id="stubCanonicalLink" href="#">Set Stub Canonical</a>
+    <div class="bookmarklet-instructions">
+      <strong>How to use:</strong>
+      <ol>
+        <li>Publish the ARA in Presto and copy its URL to your clipboard</li>
+        <li>Open the <strong>original stub</strong> story in Presto editor</li>
+        <li>Click this bookmarklet &mdash; it will:
+          <ul style="list-style:disc; padding-left:18px; margin-top:4px;">
+            <li>Read the ARA URL from your clipboard</li>
+            <li>Find the <strong>Canonical URL</strong> field in the Presto sidebar</li>
+            <li>Set its value to the ARA URL</li>
           </ul>
         </li>
       </ol>
@@ -1259,9 +1284,125 @@
 
         /* 3. Set slug with React-compatible event */
         reactSet(slugField,slug);
+
+        /* 4. Find URL Ending field to construct canonical URL */
+        var urlEnding=null;
+        var allEls2=document.querySelectorAll('label,div,span');
+        for(var u=0;u<allEls2.length;u++){
+          var uText=allEls2[u].textContent.trim();
+          if(uText==='URL Ending'||uText==='url ending'||uText==='Url Ending'){
+            var uField=null;
+            var uForId=allEls2[u].getAttribute('for');
+            if(uForId){uField=document.getElementById(uForId);}
+            if(!uField){uField=allEls2[u].parentElement.querySelector('input');}
+            if(!uField&&allEls2[u].parentElement.parentElement){uField=allEls2[u].parentElement.parentElement.querySelector('input');}
+            if(!uField){var uSib=allEls2[u].nextElementSibling;if(uSib){if(uSib.matches&&uSib.matches('input')){uField=uSib;}else if(uSib.querySelector){uField=uSib.querySelector('input');}}}
+            if(uField){urlEnding=uField.value||'';break;}
+          }
+        }
+        if(!urlEnding){urlEnding=slug;}
+
+        /* 5. Get asset ID from page URL or sidebar */
+        var assetId='';
+        var pageUrl=window.location.href;
+        var postMatch=pageUrl.match(/[?&]post=(\\d+)/);
+        if(postMatch){assetId=postMatch[1];}
+        if(!assetId){
+          /* Look for asset ID displayed in sidebar */
+          var idEls=document.querySelectorAll('label,div,span');
+          for(var ai=0;ai<idEls.length;ai++){
+            var aiText=idEls[ai].textContent.trim();
+            if(/^(Asset ID|Story ID|ID)$/i.test(aiText)){
+              var nextEl=idEls[ai].nextElementSibling||idEls[ai].parentElement;
+              var idText=(nextEl?nextEl.textContent:'').trim();
+              var idMatch=idText.match(/(\\d{8,})/);
+              if(idMatch){assetId=idMatch[1];break;}
+            }
+          }
+        }
+        if(!assetId){
+          /* Try extracting from any visible long number on the page URL */
+          var urlNums=pageUrl.match(/(\\d{8,})/);
+          if(urlNums)assetId=urlNums[1];
+        }
+
+        /* 6. Construct canonical URL and fill it */
+        if(assetId&&urlEnding){
+          var now=new Date();
+          var yyyy=now.getFullYear();
+          var mm=String(now.getMonth()+1).padStart(2,'0');
+          var dd=String(now.getDate()).padStart(2,'0');
+          var canonicalUrl='https://www.hoopshype.com/story/sports/nba/'+yyyy+'/'+mm+'/'+dd+'/'+urlEnding+'/'+assetId+'/';
+
+          /* Find Canonical URL field */
+          var canonField=null;
+          var allEls3=document.querySelectorAll('label,div,span');
+          for(var c=0;c<allEls3.length;c++){
+            var cText=allEls3[c].textContent.trim();
+            if(/^Canonical URL$/i.test(cText)||/^canonical url$/i.test(cText)){
+              var cForId=allEls3[c].getAttribute('for');
+              if(cForId){canonField=document.getElementById(cForId);}
+              if(!canonField){canonField=allEls3[c].parentElement.querySelector('input');}
+              if(!canonField&&allEls3[c].parentElement.parentElement){canonField=allEls3[c].parentElement.parentElement.querySelector('input');}
+              if(!canonField){var cSib=allEls3[c].nextElementSibling;if(cSib){if(cSib.matches&&cSib.matches('input')){canonField=cSib;}else if(cSib.querySelector){canonField=cSib.querySelector('input');}}}
+              if(canonField)break;
+            }
+          }
+          if(!canonField){canonField=document.querySelector('input[name*="canonical"],input[id*="canonical"]');}
+          if(canonField){
+            reactSet(canonField,canonicalUrl);
+            console.log('[Presto Auto-Fill] Canonical URL set to: '+canonicalUrl);
+          }else{
+            console.warn('[Presto Auto-Fill] Could not find Canonical URL field');
+          }
+        }
       }catch(e){alert('Bookmarklet error: '+e.message);}
     })()`;
     document.getElementById('bookmarkletLink').href = 'javascript:' + encodeURIComponent(code);
+  })();
+
+  // ─── Set Stub Canonical bookmarklet ───
+  (function setupStubCanonical() {
+    const stubCode = `(function(){
+      try{
+        function reactSet(el,val){
+          var proto=el.tagName==='SELECT'?window.HTMLSelectElement.prototype:window.HTMLInputElement.prototype;
+          var setter=Object.getOwnPropertyDescriptor(proto,'value');
+          if(!setter)setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value');
+          if(setter&&setter.set){setter.set.call(el,val);}else{el.value=val;}
+          el.dispatchEvent(new Event('input',{bubbles:true}));
+          el.dispatchEvent(new Event('change',{bubbles:true}));
+        }
+
+        navigator.clipboard.readText().then(function(araUrl){
+          if(!araUrl||!araUrl.trim()){alert('Clipboard is empty. Copy the ARA URL first.');return;}
+          araUrl=araUrl.trim();
+
+          /* Find Canonical URL field */
+          var canonField=null;
+          var allEls=document.querySelectorAll('label,div,span');
+          for(var c=0;c<allEls.length;c++){
+            var cText=allEls[c].textContent.trim();
+            if(/^Canonical URL$/i.test(cText)){
+              var cForId=allEls[c].getAttribute('for');
+              if(cForId){canonField=document.getElementById(cForId);}
+              if(!canonField){canonField=allEls[c].parentElement.querySelector('input');}
+              if(!canonField&&allEls[c].parentElement.parentElement){canonField=allEls[c].parentElement.parentElement.querySelector('input');}
+              if(!canonField){var cSib=allEls[c].nextElementSibling;if(cSib){if(cSib.matches&&cSib.matches('input')){canonField=cSib;}else if(cSib.querySelector){canonField=cSib.querySelector('input');}}}
+              if(canonField)break;
+            }
+          }
+          if(!canonField){canonField=document.querySelector('input[name*="canonical"],input[id*="canonical"]');}
+          if(!canonField){alert('Could not find Canonical URL field.');return;}
+
+          reactSet(canonField,araUrl);
+          console.log('[Set Stub Canonical] Set Canonical URL to: '+araUrl);
+        }).catch(function(err){
+          alert('Could not read clipboard. Make sure you have copied the ARA URL.\\n\\nError: '+err.message);
+        });
+      }catch(e){alert('Bookmarklet error: '+e.message);}
+    })()`;
+    document.getElementById('stubCanonicalLink').href = 'javascript:' + encodeURIComponent(stubCode);
   })();
 
   // ─── Slack "Open All ARAs" bookmarklet ───
